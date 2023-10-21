@@ -1,6 +1,8 @@
 mod utils;
 
 use std::convert::TryInto;
+use std::convert::TryFrom;
+use utils::set_panic_hook;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{WebGlRenderingContext, WebGlShader, WebGlProgram};
@@ -15,10 +17,12 @@ macro_rules! log {
     }
 }
 
-static mut FRAMES: i64 = 0;
+static mut frames: i64 = 0;
+
 
 #[wasm_bindgen(start)]
 pub fn init() {
+    set_panic_hook();
     panic::set_hook(Box::new(console_error_panic_hook::hook));
 }
 
@@ -28,9 +32,9 @@ use std::panic;
 #[wasm_bindgen]
 pub fn render() {
     unsafe { 
-        FRAMES += 1; 
-        if (FRAMES % 100 == 0) {
-            log!("FRAME: {:?}", FRAMES);
+        frames += 1; 
+        if frames % 100 == 0 {
+            log!("FRAME: {:?}", frames);
         }
     }
 }
@@ -203,12 +207,11 @@ pub fn init_shaders(gl: WebGlRenderingContext) -> Result<WebGlProgram, JsValue> 
 pub fn draw_triangle(
     gl: WebGlRenderingContext,
     shader_program: WebGlProgram,
-    selected_color: Option<Vec<f32>>,
 ) -> Result<WebGlRenderingContext, JsValue> {
 
-    let mut frames_safe: i64;
+    let frames_safe: i64;
     unsafe {
-        frames_safe = FRAMES;
+        frames_safe = frames;
     }
     
     let vertices: [f32; 9] = [
@@ -228,7 +231,7 @@ pub fn draw_triangle(
     setup_colors(&gl, &colors, &shader_program);
 
 
-    gl.clear_color(0f32, 0f32, 0f32, 1f32);
+    gl.clear_color(0.1f32, 0.1f32, 0.1f32, 1f32);
     gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
 
     gl.draw_arrays(
@@ -238,4 +241,95 @@ pub fn draw_triangle(
     );
 
     Ok(gl)
+}
+
+#[wasm_bindgen]
+pub fn draw_grid(
+    gl: WebGlRenderingContext,
+    shader_program: WebGlProgram,
+    grid_width: usize,
+    grid_height: usize,
+    //selected_color: Option<Vec<f32>>,
+) -> Result<WebGlRenderingContext, JsValue> {
+
+    let mut vertices: Vec<f32> = Vec::with_capacity(grid_width * grid_height * 6 * 3);
+    let mut colors: Vec<f32> = Vec::with_capacity(grid_width * grid_height * 6 * 4);
+
+    let screen_width : f32 = gl.drawing_buffer_width() as f32;
+    let screen_height : f32 = gl.drawing_buffer_height() as f32;
+
+    let width: f32 = i32::try_from(grid_width).unwrap() as f32;
+    let height: f32 = i32::try_from(grid_height).unwrap() as f32;
+
+    let tile_width: f32 = 1.0 / width;
+    let tile_height: f32 = 1.0 / height;
+
+    for i in 0..grid_height {
+        for j in 0..grid_width {
+            let left: f32 = convert_X_to_screen(j as f32 * tile_width + 0.2 * tile_width);
+            let right: f32 = convert_X_to_screen((j + 1) as f32 * tile_width - 0.2 * tile_width);
+            let top: f32 = convert_Y_to_screen(i as f32 * tile_height + 0.2 * tile_height);
+            let bottom: f32 = convert_Y_to_screen((i + 1) as f32 * tile_height - 0.2 * tile_height);
+
+            let lt_color: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+            let lb_color: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
+            let rt_color: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
+            let rb_color: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+
+            // Triangle 1
+            vertices.push(right); // X
+            vertices.push(top); // Y
+            vertices.push(0.0); // Z
+
+            vertices.push(left); // X
+            vertices.push(top); // Y
+            vertices.push(0.0); // Z
+
+            vertices.push(left); // X
+            vertices.push(bottom); // Y
+            vertices.push(0.0); // Z
+
+            colors.extend_from_slice(&rt_color);
+            colors.extend_from_slice(&lt_color);
+            colors.extend_from_slice(&lb_color);
+
+            // Triangle 2
+            vertices.push(left); // X
+            vertices.push(bottom); // Y
+            vertices.push(0.0); // Z
+
+            vertices.push(right); // X
+            vertices.push(bottom); // Y
+            vertices.push(0.0); // Z
+
+            vertices.push(right); // X
+            vertices.push(top); // Y
+            vertices.push(0.0); // Z
+
+            colors.extend_from_slice(&lb_color);
+            colors.extend_from_slice(&rb_color);
+            colors.extend_from_slice(&rt_color);
+        }
+    }
+
+    setup_vertices(&gl, &vertices, &shader_program);
+    setup_colors(&gl, &colors, &shader_program);
+
+    gl.clear_color(0.1f32, 0.1f32, 0.1f32, 1f32);
+    gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
+
+    gl.draw_arrays(
+        WebGlRenderingContext::TRIANGLES,
+        0,
+        (vertices.len() / 3) as i32,
+    );
+
+    Ok(gl)
+}
+
+fn convert_X_to_screen(x: f32) -> f32 {
+    x * 2.0 - 1.0
+}
+fn convert_Y_to_screen(y: f32) -> f32 {
+    y * -2.0 + 1.0
 }
