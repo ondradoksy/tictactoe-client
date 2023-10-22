@@ -132,15 +132,14 @@ impl Game {
         let fragment_shader_source =
             "
         precision mediump float;
+        
         varying lowp vec4 vColor;
-
         varying highp vec2 vTextureCoord;
+
         uniform sampler2D uSampler;
 
         void main(void) {
-            gl_FragColor = vColor;
-            gl_FragColor = texture2D(uSampler, vTextureCoord);
-
+            gl_FragColor = mix(texture2D(uSampler, vTextureCoord), vColor, vColor.a);
         }
         "; // uniform vec4
 
@@ -451,28 +450,30 @@ impl Game {
                 (lb_distance - lt_distance) / get_difference(bottom, top),
             0.0,
             0.0,
-            1.0,
+            0.5,
         ];
         let lb_color: [f32; 4] = [
+            0.0,
             (rb_distance - lb_distance) / get_difference(left, right) +
                 (lt_distance - lb_distance) / get_difference(bottom, top),
             0.0,
-            0.0,
-            1.0,
+            0.5,
         ];
         let rt_color: [f32; 4] = [
+            0.0,
+            0.0,
             (lt_distance - rt_distance) / get_difference(left, right) +
                 (rb_distance - rt_distance) / get_difference(bottom, top),
-            0.0,
-            0.0,
-            1.0,
+            0.5,
         ];
         let rb_color: [f32; 4] = [
             (lb_distance - rb_distance) / get_difference(left, right) +
                 (rt_distance - rb_distance) / get_difference(bottom, top),
-            0.0,
-            0.0,
-            1.0,
+            (lb_distance - rb_distance) / get_difference(left, right) +
+                (rt_distance - rb_distance) / get_difference(bottom, top),
+            (lb_distance - rb_distance) / get_difference(left, right) +
+                (rt_distance - rb_distance) / get_difference(bottom, top),
+            0.5,
         ];
 
         let mut result: [f32; 16] = [0.0; 16];
