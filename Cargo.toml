@@ -35,7 +35,9 @@ features = [
     'WebGlShader',
     'WebGlBuffer',
     'WebGlUniformLocation',
-    'MouseEvent'
+    'MouseEvent',
+    'HtmlImageElement',
+    'WebGlTexture'
 ]
 
 [dev-dependencies]

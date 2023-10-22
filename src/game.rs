@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
-use web_sys::HtmlCanvasElement;
-use web_sys::{ WebGlRenderingContext, WebGlShader, WebGlProgram };
+use web_sys::HtmlImageElement;
+use web_sys::{ HtmlCanvasElement, WebGlRenderingContext, WebGlShader, WebGlProgram };
 use std::convert::TryInto;
 use std::convert::TryFrom;
 
@@ -21,6 +21,7 @@ pub struct Game {
     tile_spacing: f32,
     scale: (f32, f32),
     grid_size: (i32, i32),
+    image: HtmlImageElement,
 }
 #[wasm_bindgen(module = "game")]
 impl Game {
@@ -35,6 +36,9 @@ impl Game {
             .get_element_by_id(&canvas_id)
             .unwrap();
 
+        let image = web_sys::HtmlImageElement::new().unwrap();
+        image.set_src("texture.png");
+
         let instance = Game {
             frames: 0,
             gl: gl,
@@ -44,6 +48,7 @@ impl Game {
             tile_spacing: 0.1,
             scale: (1.0, 1.0),
             grid_size: (10, 10),
+            image: image,
         };
 
         instance
@@ -112,12 +117,15 @@ impl Game {
             "
         attribute vec3 coordinates;
         attribute vec4 vertexColor;
+        attribute vec2 aTextureCoord;
 
         varying lowp vec4 vColor;
+        varying highp vec2 vTextureCoord;
 
         void main(void) {
             gl_Position = vec4(coordinates, 1.0);
             vColor = vertexColor;
+            vTextureCoord = aTextureCoord;
         }
         ";
 
@@ -125,8 +133,14 @@ impl Game {
             "
         precision mediump float;
         varying lowp vec4 vColor;
+
+        varying highp vec2 vTextureCoord;
+        uniform sampler2D uSampler;
+
         void main(void) {
             gl_FragColor = vColor;
+            gl_FragColor = texture2D(uSampler, vTextureCoord);
+
         }
         "; // uniform vec4
 
@@ -191,6 +205,7 @@ impl Game {
             0,
             0
         );
+
         gl.enable_vertex_attrib_array(coordinates_location as u32);
     }
 
@@ -219,7 +234,55 @@ impl Game {
         gl.enable_vertex_attrib_array(colors_location as u32);
     }
 
-    pub fn draw_grid(&self) {
+    fn setup_texture(&mut self, texture_coords: &[f32]) -> web_sys::WebGlTexture {
+        let texture_coords_array = unsafe { js_sys::Float32Array::view(&texture_coords) };
+        let texture_coords_buffer = self.gl.create_buffer().unwrap();
+        self.gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
+        self.gl.buffer_data_with_array_buffer_view(
+            WebGlRenderingContext::ARRAY_BUFFER,
+            &texture_coords_array,
+            WebGlRenderingContext::STATIC_DRAW
+        );
+
+        let sampler_location = self.gl
+            .get_uniform_location(&self.shader_program, "uSampler")
+            .unwrap();
+
+        let texture = self.gl.create_texture().unwrap();
+        self.gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&texture));
+
+        let _ = self.gl.tex_image_2d_with_u32_and_u32_and_image(
+            WebGlRenderingContext::TEXTURE_2D,
+            0,
+            WebGlRenderingContext::RGB.try_into().unwrap(),
+            WebGlRenderingContext::RGB,
+            WebGlRenderingContext::UNSIGNED_BYTE,
+            &self.image
+        );
+
+        let texture_coord_location = self.gl.get_attrib_location(
+            &self.shader_program,
+            "aTextureCoord"
+        );
+
+        self.gl.uniform1i(Some(&sampler_location), 0);
+        self.gl.generate_mipmap(WebGlRenderingContext::TEXTURE_2D);
+
+        self.gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
+        self.gl.vertex_attrib_pointer_with_i32(
+            texture_coord_location as u32,
+            2,
+            WebGlRenderingContext::FLOAT,
+            false,
+            0,
+            0
+        );
+        self.gl.enable_vertex_attrib_array(texture_coord_location as u32);
+
+        texture
+    }
+
+    pub fn draw_grid(&mut self) {
         let mut vertices: Vec<f32> = Vec::with_capacity(
             (self.grid_size.0 * self.grid_size.1 * 6 * 3) as usize
         );
@@ -232,6 +295,8 @@ impl Game {
 
         let tile_width: f32 = 1.0 / width;
         let tile_height: f32 = 1.0 / height;
+
+        let mut texture_coords: [f32; 100 * 6 * 2] = [0.0; 100 * 6 * 2];
 
         // Y
         for i in 0..self.grid_size.1 {
@@ -284,6 +349,15 @@ impl Game {
                 colors.extend_from_slice(&lt_color);
                 colors.extend_from_slice(&lb_color);
 
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 0] = 1.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 1] = 0.0;
+
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 2] = 0.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 3] = 0.0;
+
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 4] = 0.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 5] = 1.0;
+
                 // Triangle 2
                 vertices.push(left); // X
                 vertices.push(bottom); // Y
@@ -300,8 +374,19 @@ impl Game {
                 colors.extend_from_slice(&lb_color);
                 colors.extend_from_slice(&rb_color);
                 colors.extend_from_slice(&rt_color);
+
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 6] = 0.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 7] = 1.0;
+
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 8] = 1.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 9] = 1.0;
+
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 10] = 1.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 11] = 0.0;
             }
         }
+
+        let texture = self.setup_texture(&texture_coords);
 
         Game::setup_vertices(&self.gl, &vertices, &self.shader_program);
         Game::setup_colors(&self.gl, &colors, &self.shader_program);
