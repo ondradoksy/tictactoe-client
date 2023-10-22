@@ -227,9 +227,6 @@ impl Game {
             (self.grid_size.0 * self.grid_size.1 * 6 * 4) as usize
         );
 
-        let screen_width: f32 = self.gl.drawing_buffer_width() as f32;
-        let screen_height: f32 = self.gl.drawing_buffer_height() as f32;
-
         let width: f32 = i32::try_from(self.grid_size.0).unwrap() as f32;
         let height: f32 = i32::try_from(self.grid_size.1).unwrap() as f32;
 
@@ -343,6 +340,12 @@ impl Game {
     fn convert_y_to_screen(y: f32) -> f32 {
         y * -2.0 + 1.0
     }
+    fn convert_x_from_screen(x: f32) -> f32 {
+        x / 2.0 + 1.0
+    }
+    fn convert_y_from_screen(y: f32) -> f32 {
+        y / -2.0 - 1.0
+    }
 
     fn get_tile_colors(
         &self,
@@ -358,10 +361,34 @@ impl Game {
         let rt_distance = get_distance(self.mouse_pos.0, self.mouse_pos.1, right, top);
         let rb_distance = get_distance(self.mouse_pos.0, self.mouse_pos.1, right, bottom);
 
-        let lt_color: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
-        let lb_color: [f32; 4] = [0.0, 1.0, 0.0, 1.0];
-        let rt_color: [f32; 4] = [0.0, 0.0, 1.0, 1.0];
-        let rb_color: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+        let lt_color: [f32; 4] = [
+            (rt_distance - lt_distance) / get_difference(left, right) +
+                (lb_distance - lt_distance) / get_difference(bottom, top),
+            0.0,
+            0.0,
+            1.0,
+        ];
+        let lb_color: [f32; 4] = [
+            (rb_distance - lb_distance) / get_difference(left, right) +
+                (lt_distance - lb_distance) / get_difference(bottom, top),
+            0.0,
+            0.0,
+            1.0,
+        ];
+        let rt_color: [f32; 4] = [
+            (lt_distance - rt_distance) / get_difference(left, right) +
+                (rb_distance - rt_distance) / get_difference(bottom, top),
+            0.0,
+            0.0,
+            1.0,
+        ];
+        let rb_color: [f32; 4] = [
+            (lb_distance - rb_distance) / get_difference(left, right) +
+                (rt_distance - rb_distance) / get_difference(bottom, top),
+            0.0,
+            0.0,
+            1.0,
+        ];
 
         let mut result: [f32; 16] = [0.0; 16];
 
@@ -383,6 +410,10 @@ impl Game {
 
         result
     }
+}
+
+fn get_difference(a: f32, b: f32) -> f32 {
+    (a - b).abs()
 }
 
 fn get_distance(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
