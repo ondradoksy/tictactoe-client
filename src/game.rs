@@ -178,25 +178,21 @@ impl Game {
         }
     }
 
-    pub fn setup_vertices(
-        gl: &WebGlRenderingContext,
-        vertices: &[f32],
-        shader_program: &WebGlProgram
-    ) {
+    fn setup_vertices(&self, vertices: &[f32]) {
         let vertices_array = unsafe { js_sys::Float32Array::view(&vertices) };
-        let vertex_buffer = gl.create_buffer().unwrap();
+        let vertex_buffer = self.gl.create_buffer().unwrap();
 
-        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
-        gl.buffer_data_with_array_buffer_view(
+        self.gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
+        self.gl.buffer_data_with_array_buffer_view(
             WebGlRenderingContext::ARRAY_BUFFER,
             &vertices_array,
             WebGlRenderingContext::STATIC_DRAW
         );
 
-        let coordinates_location = gl.get_attrib_location(&shader_program, "coordinates");
+        let coordinates_location = self.gl.get_attrib_location(&self.shader_program, "coordinates");
 
-        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
-        gl.vertex_attrib_pointer_with_i32(
+        self.gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
+        self.gl.vertex_attrib_pointer_with_i32(
             coordinates_location as u32,
             3,
             WebGlRenderingContext::FLOAT,
@@ -205,7 +201,7 @@ impl Game {
             0
         );
 
-        gl.enable_vertex_attrib_array(coordinates_location as u32);
+        self.gl.enable_vertex_attrib_array(coordinates_location as u32);
     }
 
     pub fn setup_colors(gl: &WebGlRenderingContext, colors: &[f32], shader_program: &WebGlProgram) {
@@ -281,12 +277,27 @@ impl Game {
         texture
     }
 
+    fn setup_indices(&mut self, indices: &[u16]) {
+        let indices_array = unsafe { js_sys::Uint16Array::view(&indices) };
+        let index_buffer = self.gl.create_buffer().unwrap();
+
+        self.gl.bind_buffer(WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+        self.gl.buffer_data_with_array_buffer_view(
+            WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+            &indices_array,
+            WebGlRenderingContext::STATIC_DRAW
+        );
+    }
+
     pub fn draw_grid(&mut self) {
         let mut vertices: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.0 * self.grid_size.1 * 6 * 3) as usize
+            (self.grid_size.0 * self.grid_size.1 * 4 * 3) as usize
         );
         let mut colors: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.0 * self.grid_size.1 * 6 * 4) as usize
+            (self.grid_size.0 * self.grid_size.1 * 4 * 4) as usize
+        );
+        let mut indices: Vec<u16> = Vec::with_capacity(
+            (self.grid_size.0 * self.grid_size.1 * 6) as usize
         );
 
         let width: f32 = i32::try_from(self.grid_size.0).unwrap() as f32;
@@ -332,6 +343,16 @@ impl Game {
                 let rb_color: &[f32] = iter.next().unwrap();
 
                 // Triangle 1
+                indices.push(((i * self.grid_size.0 + j) * 4 + 0) as u16);
+                indices.push(((i * self.grid_size.0 + j) * 4 + 1) as u16);
+                indices.push(((i * self.grid_size.0 + j) * 4 + 2) as u16);
+
+                // Triangle 2
+                indices.push(((i * self.grid_size.0 + j) * 4 + 2) as u16);
+                indices.push(((i * self.grid_size.0 + j) * 4 + 3) as u16);
+                indices.push(((i * self.grid_size.0 + j) * 4 + 0) as u16);
+
+                // Vertices
                 vertices.push(right); // X
                 vertices.push(top); // Y
                 vertices.push(0.0); // Z
@@ -344,53 +365,44 @@ impl Game {
                 vertices.push(bottom); // Y
                 vertices.push(0.0); // Z
 
+                vertices.push(right); // X
+                vertices.push(bottom); // Y
+                vertices.push(0.0); // Z
+
+                // Colors
                 colors.extend_from_slice(&rt_color);
                 colors.extend_from_slice(&lt_color);
                 colors.extend_from_slice(&lb_color);
-
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 0] = 1.0;
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 1] = 0.0;
-
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 2] = 0.0;
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 3] = 0.0;
-
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 4] = 0.0;
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 5] = 1.0;
-
-                // Triangle 2
-                vertices.push(left); // X
-                vertices.push(bottom); // Y
-                vertices.push(0.0); // Z
-
-                vertices.push(right); // X
-                vertices.push(bottom); // Y
-                vertices.push(0.0); // Z
-
-                vertices.push(right); // X
-                vertices.push(top); // Y
-                vertices.push(0.0); // Z
-
-                colors.extend_from_slice(&lb_color);
                 colors.extend_from_slice(&rb_color);
-                colors.extend_from_slice(&rt_color);
 
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 6] = 0.0;
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 7] = 1.0;
+                // Textures
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 8 + 0] = 1.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 8 + 1] = 0.0;
 
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 8] = 1.0;
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 9] = 1.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 8 + 2] = 0.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 8 + 3] = 0.0;
 
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 10] = 1.0;
-                texture_coords[((i * self.grid_size.0 + j) as usize) * 12 + 11] = 0.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 8 + 4] = 0.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 8 + 5] = 1.0;
+
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 8 + 6] = 1.0;
+                texture_coords[((i * self.grid_size.0 + j) as usize) * 8 + 7] = 1.0;
             }
         }
 
         let texture = self.setup_texture(&texture_coords);
 
-        Game::setup_vertices(&self.gl, &vertices, &self.shader_program);
+        self.setup_indices(&indices);
+        self.setup_vertices(&vertices);
         Game::setup_colors(&self.gl, &colors, &self.shader_program);
 
-        self.gl.draw_arrays(WebGlRenderingContext::TRIANGLES, 0, (vertices.len() / 3) as i32);
+        //self.gl.draw_arrays(WebGlRenderingContext::TRIANGLES, 0, (vertices.len() / 3) as i32);
+        self.gl.draw_elements_with_i32(
+            WebGlRenderingContext::TRIANGLES,
+            indices.len() as i32,
+            WebGlRenderingContext::UNSIGNED_SHORT,
+            0
+        );
     }
 
     pub fn on_mouse_move(&mut self, event: web_sys::MouseEvent) {
