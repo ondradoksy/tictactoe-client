@@ -1,5 +1,5 @@
 mod utils;
-mod game;
+pub mod game;
 
 use utils::set_panic_hook;
 use wasm_bindgen::prelude::*;
