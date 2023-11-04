@@ -1,3 +1,5 @@
+extern crate web_sys;
+
 pub fn set_panic_hook() {
     // When the `console_error_panic_hook` feature is enabled, we can call the
     // `set_panic_hook` function at least once during initialization, and then
@@ -7,4 +9,13 @@ pub fn set_panic_hook() {
     // https://github.com/rustwasm/console_error_panic_hook#readme
     #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
+}
+
+pub fn now() -> f64 {
+    web_sys
+        ::window()
+        .expect("should have a Window")
+        .performance()
+        .expect("should have a Performance")
+        .now()
 }

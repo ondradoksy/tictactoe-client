@@ -38,7 +38,8 @@ features = [
     'WebGlUniformLocation',
     'MouseEvent',
     'HtmlImageElement',
-    'WebGlTexture'
+    'WebGlTexture',
+    'Performance'
 ]
 
 [dev-dependencies]

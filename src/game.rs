@@ -5,6 +5,7 @@ use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
 use webgl_matrix::{ Matrix, Vector, ProjectionMatrix, Mat4, Vec4, Mat3, Vec3, MulVectorMatrix };
+use crate::utils::now;
 
 // A macro to provide `println!(..)`-style syntax for `console.log` logging.
 macro_rules! log {
@@ -26,6 +27,7 @@ pub struct Game {
     image: HtmlImageElement,
     model_view_matrix: [f32; 16],
     projection_matrix: [f32; 16],
+    last_time: f64,
 }
 #[wasm_bindgen(module = "game")]
 impl Game {
@@ -55,6 +57,7 @@ impl Game {
             image: image,
             model_view_matrix: Mat4::identity(),
             projection_matrix: Mat4::create_perspective(90.0, 1.0, 0.1, 100.0),
+            last_time: now(),
         };
 
         instance
@@ -68,7 +71,12 @@ impl Game {
 
         self.frames += 1;
         if self.frames % 100 == 0 {
-            log!("FRAME: {:?}", self.frames);
+            log!(
+                "FRAME: {:?}, FPS: {:?}",
+                self.frames,
+                (1000.0 / (now() - self.last_time)) * 100.0
+            );
+            self.last_time = now();
         }
     }
 
@@ -584,18 +592,6 @@ impl Game {
             lb_color = [1.0, 1.0, 1.0, 1.0];
             rt_color = [1.0, 1.0, 1.0, 1.0];
             rb_color = [1.0, 1.0, 1.0, 1.0];
-        }
-
-        if x == 9 && y == 0 {
-            log!(
-                "{:?}\n {:?}\n {:?}\n {:?}\n {:?} {:?}",
-                tl_pos,
-                bl_pos,
-                br_pos,
-                tr_pos,
-                Game::convert_x_to_screen(self.mouse_pos.0),
-                Game::convert_y_to_screen(self.mouse_pos.1)
-            );
         }
 
         let mut result: [f32; 16] = [0.0; 16];
