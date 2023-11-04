@@ -96,6 +96,8 @@ impl Game {
 
         gl.viewport(0, 0, canvas.width().try_into().unwrap(), canvas.height().try_into().unwrap());
 
+        gl.enable(WebGlRenderingContext::DEPTH_TEST);
+
         gl
     }
 
@@ -350,11 +352,9 @@ impl Game {
         self.model_view_matrix = Mat4::identity();
         self.projection_matrix = Mat4::create_perspective(90.0, self.aspect_ratio, 0.1, 100.0);
         self.model_view_matrix[14] = -1.0;
-        self.model_view_matrix.rotate(PI / 16.0, &[0.0, 1.0, 0.0]);
+        self.model_view_matrix.rotate((PI / 256.0) * (self.frames as f32), &[0.0, 1.0, 0.0]);
 
         self.setup_3d();
-
-        Mat4::create_perspective_from_viewport(-1.0, 1.0, -1.0, 1.0, 0.1, 100.0);
 
         // background
         {
@@ -431,19 +431,19 @@ impl Game {
                 // Vertices
                 vertices.push(right); // X
                 vertices.push(top); // Y
-                vertices.push(((j as f32) % 2.0) * 0.05); // Z
+                vertices.push(((self.grid_size.0 - j) as f32) * 0.05 + ((i as f32) % 2.0) * 0.05); // Z
 
                 vertices.push(left); // X
                 vertices.push(top); // Y
-                vertices.push(((j as f32) % 2.0) * 0.05); // Z
+                vertices.push(((self.grid_size.0 - j) as f32) * 0.05 + ((i as f32) % 2.0) * 0.05); // Z
 
                 vertices.push(left); // X
                 vertices.push(bottom); // Y
-                vertices.push(((j as f32) % 2.0) * 0.05); // Z
+                vertices.push(((self.grid_size.0 - j) as f32) * 0.05 + ((i as f32) % 2.0) * 0.05); // Z
 
                 vertices.push(right); // X
                 vertices.push(bottom); // Y
-                vertices.push(((j as f32) % 2.0) * 0.05); // Z
+                vertices.push(((self.grid_size.0 - j) as f32) * 0.05 + ((i as f32) % 2.0) * 0.05); // Z
 
                 // Colors
                 let vertices_index: usize = vertices.len() - 12;
@@ -490,7 +490,9 @@ impl Game {
         self.setup_vertices(&vertices);
         Game::setup_colors(&self.gl, &colors, &self.shader_program);
 
-        //self.gl.draw_arrays(WebGlRenderingContext::TRIANGLES, 0, (vertices.len() / 3) as i32);
+        if self.frames % 100 == 0 {
+            log!("Renering: {:?} triangles", indices.len() / 3);
+        }
         self.gl.draw_elements_with_i32(
             WebGlRenderingContext::TRIANGLES,
             indices.len() as i32,
@@ -601,15 +603,6 @@ impl Game {
             result[i + 4] = lb_color[i];
             result[i + 8] = rt_color[i];
             result[i + 12] = rb_color[i];
-        }
-
-        // keep values between 0 and 1
-        for i in 0..16 {
-            if result[i] > 1.0 {
-                result[i] = 1.0;
-            } else if result[i] < 0.0 {
-                result[i] = 0.0;
-            }
         }
 
         result
