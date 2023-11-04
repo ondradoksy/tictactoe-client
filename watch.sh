@@ -1,2 +1,2 @@
 #!/usr/bin/bash
-cargo watch -i .gitignore -i "pkg/*" -s "wasm-pack build"
+cargo watch -i .gitignore -i "pkg/*" -s "wasm-pack build --debug"
