@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlImageElement;
-use web_sys::{ HtmlCanvasElement, WebGlRenderingContext, WebGlShader, WebGlProgram };
+use web_sys::{ HtmlCanvasElement, WebGl2RenderingContext, WebGlShader, WebGlProgram };
 use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
@@ -17,22 +17,21 @@ macro_rules! log {
 #[wasm_bindgen(module = "game")]
 pub struct Game {
     frames: i64,
-    gl: WebGlRenderingContext,
+    gl: WebGl2RenderingContext,
     shader_program: WebGlProgram,
-    canvas: HtmlCanvasElement,
     mouse_pos: (f32, f32),
     tile_spacing: f32,
     aspect_ratio: f32,
     grid_size: (i32, i32),
     image: HtmlImageElement,
-    model_view_matrix: [f32; 16],
+    view_matrix: [f32; 16],
     projection_matrix: [f32; 16],
     last_time: f64,
 }
 #[wasm_bindgen(module = "game")]
 impl Game {
     pub fn new(canvas_id: &str) -> Game {
-        let gl: WebGlRenderingContext = Game::init_webgl_context(&canvas_id);
+        let gl: WebGl2RenderingContext = Game::init_webgl_context(&canvas_id);
         let shader_program: WebGlProgram = Game::setup_shaders(&gl).unwrap();
         let canvas = web_sys
             ::window()
@@ -49,13 +48,12 @@ impl Game {
             frames: 0,
             gl: gl,
             shader_program: shader_program,
-            canvas: canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap(),
             mouse_pos: (0.0, 0.0),
             tile_spacing: 0.1,
             aspect_ratio: 1.0,
             grid_size: (10, 10),
             image: image,
-            model_view_matrix: Mat4::identity(),
+            view_matrix: Mat4::identity(),
             projection_matrix: Mat4::create_perspective(90.0, 1.0, 0.1, 100.0),
             last_time: now(),
         };
@@ -80,29 +78,29 @@ impl Game {
         }
     }
 
-    pub fn init_webgl_context(canvas_id: &str) -> WebGlRenderingContext {
+    pub fn init_webgl_context(canvas_id: &str) -> WebGl2RenderingContext {
         let document = web_sys::window().unwrap().document().unwrap();
         let canvas = document.get_element_by_id(canvas_id).unwrap();
         let canvas: web_sys::HtmlCanvasElement = canvas
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .unwrap();
 
-        let gl: WebGlRenderingContext = canvas
-            .get_context("webgl")
+        let gl: WebGl2RenderingContext = canvas
+            .get_context("webgl2")
             .unwrap()
             .unwrap()
-            .dyn_into::<WebGlRenderingContext>()
+            .dyn_into::<WebGl2RenderingContext>()
             .unwrap();
 
         gl.viewport(0, 0, canvas.width().try_into().unwrap(), canvas.height().try_into().unwrap());
 
-        gl.enable(WebGlRenderingContext::DEPTH_TEST);
+        gl.enable(WebGl2RenderingContext::DEPTH_TEST);
 
         gl
     }
 
     pub fn create_shader(
-        gl: &WebGlRenderingContext,
+        gl: &WebGl2RenderingContext,
         shader_type: u32,
         source: &str
     ) -> WebGlShader {
@@ -113,7 +111,7 @@ impl Game {
 
         if
             gl
-                .get_shader_parameter(&shader, WebGlRenderingContext::COMPILE_STATUS)
+                .get_shader_parameter(&shader, WebGl2RenderingContext::COMPILE_STATUS)
                 .as_bool()
                 .unwrap_or(false)
         {
@@ -128,7 +126,7 @@ impl Game {
         }
     }
 
-    pub fn setup_shaders(gl: &WebGlRenderingContext) -> Result<WebGlProgram, JsValue> {
+    pub fn setup_shaders(gl: &WebGl2RenderingContext) -> Result<WebGlProgram, JsValue> {
         let vertex_shader_source =
             "
         attribute vec3 coordinates;
@@ -138,11 +136,11 @@ impl Game {
         varying lowp vec4 vColor;
         varying highp vec2 vTextureCoord;
 
-        uniform mat4 modelViewMatrix;
+        uniform mat4 viewMatrix;
         uniform mat4 projectionMatrix;
 
         void main(void) {
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(coordinates, 1.0);
+            gl_Position = projectionMatrix * viewMatrix * vec4(coordinates, 1.0);
             vColor = vertexColor;
             vTextureCoord = aTextureCoord;
         }
@@ -164,12 +162,12 @@ impl Game {
 
         let vertex_shader = Game::create_shader(
             gl,
-            WebGlRenderingContext::VERTEX_SHADER,
+            WebGl2RenderingContext::VERTEX_SHADER,
             vertex_shader_source
         );
         let fragment_shader = Game::create_shader(
             gl,
-            WebGlRenderingContext::FRAGMENT_SHADER,
+            WebGl2RenderingContext::FRAGMENT_SHADER,
             fragment_shader_source
         );
 
@@ -180,7 +178,7 @@ impl Game {
 
         if
             gl
-                .get_program_parameter(&shader_program, WebGlRenderingContext::LINK_STATUS)
+                .get_program_parameter(&shader_program, WebGl2RenderingContext::LINK_STATUS)
                 .as_bool()
                 .unwrap_or(false)
         {
@@ -201,20 +199,20 @@ impl Game {
         let vertices_array = unsafe { js_sys::Float32Array::view(&vertices) };
         let vertex_buffer = self.gl.create_buffer().unwrap();
 
-        self.gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
         self.gl.buffer_data_with_array_buffer_view(
-            WebGlRenderingContext::ARRAY_BUFFER,
+            WebGl2RenderingContext::ARRAY_BUFFER,
             &vertices_array,
-            WebGlRenderingContext::STATIC_DRAW
+            WebGl2RenderingContext::STATIC_DRAW
         );
 
         let coordinates_location = self.gl.get_attrib_location(&self.shader_program, "coordinates");
 
-        self.gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
         self.gl.vertex_attrib_pointer_with_i32(
             coordinates_location as u32,
             3,
-            WebGlRenderingContext::FLOAT,
+            WebGl2RenderingContext::FLOAT,
             false,
             0,
             0
@@ -223,24 +221,28 @@ impl Game {
         self.gl.enable_vertex_attrib_array(coordinates_location as u32);
     }
 
-    pub fn setup_colors(gl: &WebGlRenderingContext, colors: &[f32], shader_program: &WebGlProgram) {
+    pub fn setup_colors(
+        gl: &WebGl2RenderingContext,
+        colors: &[f32],
+        shader_program: &WebGlProgram
+    ) {
         let color_array = unsafe { js_sys::Float32Array::view(&colors) };
         let color_buffer = gl.create_buffer().unwrap();
 
-        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&color_buffer));
+        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&color_buffer));
         gl.buffer_data_with_array_buffer_view(
-            WebGlRenderingContext::ARRAY_BUFFER,
+            WebGl2RenderingContext::ARRAY_BUFFER,
             &color_array,
-            WebGlRenderingContext::STATIC_DRAW
+            WebGl2RenderingContext::STATIC_DRAW
         );
 
         let colors_location = gl.get_attrib_location(&shader_program, "vertexColor");
 
-        gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&color_buffer));
+        gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&color_buffer));
         gl.vertex_attrib_pointer_with_i32(
             colors_location as u32,
             4,
-            WebGlRenderingContext::FLOAT,
+            WebGl2RenderingContext::FLOAT,
             false,
             0,
             0
@@ -251,11 +253,11 @@ impl Game {
     fn setup_texture(&mut self, texture_coords: &[f32]) -> web_sys::WebGlTexture {
         let texture_coords_array = unsafe { js_sys::Float32Array::view(&texture_coords) };
         let texture_coords_buffer = self.gl.create_buffer().unwrap();
-        self.gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
         self.gl.buffer_data_with_array_buffer_view(
-            WebGlRenderingContext::ARRAY_BUFFER,
+            WebGl2RenderingContext::ARRAY_BUFFER,
             &texture_coords_array,
-            WebGlRenderingContext::STATIC_DRAW
+            WebGl2RenderingContext::STATIC_DRAW
         );
 
         let sampler_location = self.gl
@@ -263,14 +265,14 @@ impl Game {
             .unwrap();
 
         let texture = self.gl.create_texture().unwrap();
-        self.gl.bind_texture(WebGlRenderingContext::TEXTURE_2D, Some(&texture));
+        self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&texture));
 
-        let _ = self.gl.tex_image_2d_with_u32_and_u32_and_image(
-            WebGlRenderingContext::TEXTURE_2D,
+        let _ = self.gl.tex_image_2d_with_u32_and_u32_and_html_image_element(
+            WebGl2RenderingContext::TEXTURE_2D,
             0,
-            WebGlRenderingContext::RGB.try_into().unwrap(),
-            WebGlRenderingContext::RGB,
-            WebGlRenderingContext::UNSIGNED_BYTE,
+            WebGl2RenderingContext::RGB.try_into().unwrap(),
+            WebGl2RenderingContext::RGB,
+            WebGl2RenderingContext::UNSIGNED_BYTE,
             &self.image
         );
 
@@ -280,13 +282,13 @@ impl Game {
         );
 
         self.gl.uniform1i(Some(&sampler_location), 0);
-        self.gl.generate_mipmap(WebGlRenderingContext::TEXTURE_2D);
+        self.gl.generate_mipmap(WebGl2RenderingContext::TEXTURE_2D);
 
-        self.gl.bind_buffer(WebGlRenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
         self.gl.vertex_attrib_pointer_with_i32(
             texture_coord_location as u32,
             2,
-            WebGlRenderingContext::FLOAT,
+            WebGl2RenderingContext::FLOAT,
             false,
             0,
             0
@@ -300,26 +302,26 @@ impl Game {
         let indices_array = unsafe { js_sys::Uint16Array::view(&indices) };
         let index_buffer = self.gl.create_buffer().unwrap();
 
-        self.gl.bind_buffer(WebGlRenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+        self.gl.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
         self.gl.buffer_data_with_array_buffer_view(
-            WebGlRenderingContext::ELEMENT_ARRAY_BUFFER,
+            WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER,
             &indices_array,
-            WebGlRenderingContext::STATIC_DRAW
+            WebGl2RenderingContext::STATIC_DRAW
         );
     }
 
     fn setup_3d(&mut self) {
-        let model_view_matrix_location = self.gl
-            .get_uniform_location(&self.shader_program, "modelViewMatrix")
+        let view_matrix_location = self.gl
+            .get_uniform_location(&self.shader_program, "viewMatrix")
             .unwrap();
         let projection_matrix_location = self.gl
             .get_uniform_location(&self.shader_program, "projectionMatrix")
             .unwrap();
 
         self.gl.uniform_matrix4fv_with_f32_array(
-            Some(&model_view_matrix_location),
+            Some(&view_matrix_location),
             false,
-            &self.model_view_matrix
+            &self.view_matrix
         );
         self.gl.uniform_matrix4fv_with_f32_array(
             Some(&projection_matrix_location),
@@ -349,10 +351,10 @@ impl Game {
             (self.grid_size.0 * self.grid_size.1 * 6 * 2) as usize
         );
 
-        self.model_view_matrix = Mat4::identity();
+        self.view_matrix = Mat4::identity();
         self.projection_matrix = Mat4::create_perspective(90.0, self.aspect_ratio, 0.1, 100.0);
-        self.model_view_matrix[14] = -1.0;
-        self.model_view_matrix.rotate((PI / 256.0) * (self.frames as f32), &[0.0, 1.0, 0.0]);
+        self.view_matrix[14] = -1.0;
+        self.view_matrix.rotate((PI / 256.0) * (self.frames as f32), &[0.0, 1.0, 0.0]);
 
         self.setup_3d();
 
@@ -493,11 +495,12 @@ impl Game {
         if self.frames % 100 == 0 {
             log!("Renering: {:?} triangles", indices.len() / 3);
         }
-        self.gl.draw_elements_with_i32(
-            WebGlRenderingContext::TRIANGLES,
+        self.gl.draw_elements_instanced_with_i32(
+            WebGl2RenderingContext::TRIANGLES,
             indices.len() as i32,
-            WebGlRenderingContext::UNSIGNED_SHORT,
-            0
+            WebGl2RenderingContext::UNSIGNED_SHORT,
+            0,
+            1
         );
     }
 
@@ -510,7 +513,7 @@ impl Game {
 
     fn clear(&self) {
         self.gl.clear_color(0.1f32, 0.1f32, 0.1f32, 1f32);
-        self.gl.clear(WebGlRenderingContext::COLOR_BUFFER_BIT);
+        self.gl.clear(WebGl2RenderingContext::COLOR_BUFFER_BIT);
     }
 
     fn update_viewport(&mut self) {
@@ -549,10 +552,10 @@ impl Game {
         let mut tr_pos = [tr[0], tr[1], tr[2], 1.0];
         let mut br_pos = [br[0], br[1], br[2], 1.0];
 
-        tl_pos = tl_pos.mul_matrix(&self.model_view_matrix).mul_matrix(&self.projection_matrix);
-        bl_pos = bl_pos.mul_matrix(&self.model_view_matrix).mul_matrix(&self.projection_matrix);
-        tr_pos = tr_pos.mul_matrix(&self.model_view_matrix).mul_matrix(&self.projection_matrix);
-        br_pos = br_pos.mul_matrix(&self.model_view_matrix).mul_matrix(&self.projection_matrix);
+        tl_pos = tl_pos.mul_matrix(&self.view_matrix).mul_matrix(&self.projection_matrix);
+        bl_pos = bl_pos.mul_matrix(&self.view_matrix).mul_matrix(&self.projection_matrix);
+        tr_pos = tr_pos.mul_matrix(&self.view_matrix).mul_matrix(&self.projection_matrix);
+        br_pos = br_pos.mul_matrix(&self.view_matrix).mul_matrix(&self.projection_matrix);
 
         tr_pos[0] = tr_pos[0] / tr_pos[3];
         tr_pos[1] = tr_pos[1] / tr_pos[3];
@@ -575,7 +578,7 @@ impl Game {
             1.0,
         ];
         mouse_clip_space = mouse_clip_space
-            .mul_matrix(&self.model_view_matrix)
+            .mul_matrix(&self.view_matrix)
             .mul_matrix(&self.projection_matrix);
 
         if
