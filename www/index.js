@@ -4,6 +4,7 @@ const canvas = document.getElementById("game");
 const container = document.getElementById("gameContainer");
 
 let instance = wasm.Game.new("game");
+instance.init();
 canvas.addEventListener("mousemove", (e) => instance.on_mouse_move(e));
 
 

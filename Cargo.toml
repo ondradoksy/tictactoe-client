@@ -40,7 +40,8 @@ features = [
     'HtmlImageElement',
     'WebGlTexture',
     'Performance',
-    'WebGlVertexArrayObject'
+    'WebGlVertexArrayObject',
+    'Crypto'
 ]
 
 [dev-dependencies]

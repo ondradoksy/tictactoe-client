@@ -5,7 +5,7 @@ use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
 use webgl_matrix::{ Matrix, Vector, ProjectionMatrix, Mat4, Vec4, Mat3, Vec3, MulVectorMatrix };
-use crate::utils::now;
+use crate::utils::{ now, generate_random_u32 };
 
 // A macro to provide `println!(..)`-style syntax for `console.log` logging.
 macro_rules! log {
@@ -20,13 +20,14 @@ pub struct Game {
     gl: WebGl2RenderingContext,
     shader_program: WebGlProgram,
     mouse_pos: (f32, f32),
-    tile_spacing: f32,
+    tile_scale: f32,
     aspect_ratio: f32,
     grid_size: (i32, i32),
     image: HtmlImageElement,
     view_matrix: Mat4,
     projection_matrix: Mat4,
     last_time: f64,
+    texture_indices: Vec<usize>,
 }
 #[wasm_bindgen(module = "game")]
 impl Game {
@@ -49,13 +50,14 @@ impl Game {
             gl: gl,
             shader_program: shader_program,
             mouse_pos: (0.0, 0.0),
-            tile_spacing: 0.1,
+            tile_scale: 0.8,
             aspect_ratio: 1.0,
             grid_size: (10, 10),
             image: image,
             view_matrix: Mat4::identity(),
             projection_matrix: Mat4::create_perspective(90.0, 1.0, 0.1, 100.0),
             last_time: now(),
+            texture_indices: Vec::new(),
         };
 
         instance
@@ -97,6 +99,23 @@ impl Game {
         gl.enable(WebGl2RenderingContext::DEPTH_TEST);
 
         gl
+    }
+
+    pub fn init(&mut self) {
+        self.init_texture_indices();
+    }
+
+    fn init_texture_indices(&mut self) {
+        self.texture_indices = Vec::with_capacity((self.grid_size.0 * self.grid_size.1) as usize);
+
+        // Y
+        for i in 0..self.grid_size.1 {
+            // X
+            for j in 0..self.grid_size.0 {
+                self.texture_indices.push(generate_random_u32(0, 3) as usize);
+            }
+        }
+        log!("{:?}", self.texture_indices);
     }
 
     pub fn create_shader(
@@ -468,9 +487,9 @@ impl Game {
                 let bottom: f32 = -1.0;
 
                 let mut model_matrix = Mat4::identity();
-                model_matrix[0] = scale * 0.8;
-                model_matrix[5] = scale * 0.8;
-                model_matrix[10] = scale * 0.8;
+                model_matrix[0] = scale * self.tile_scale;
+                model_matrix[5] = scale * self.tile_scale;
+                model_matrix[10] = scale * self.tile_scale;
                 model_matrix.rotate(
                     (PI / 256.0) * (self.frames as f32) +
                         (PI / 256.0) * ((i * self.grid_size.0 + j) as f32),
@@ -479,8 +498,6 @@ impl Game {
                 model_matrix[12] = origin_x;
                 model_matrix[13] = origin_y;
                 model_matrix[14] = 0.1;
-                //model_matrix.translate(&[origin_x, origin_y, 0.0]);
-                //log!("{:?} {:?}", origin_x, origin_y);
 
                 models.extend_from_slice(&model_matrix);
 
@@ -516,8 +533,6 @@ impl Game {
                 let vertices_index: usize = vertices.len() - 12;
 
                 let tile_colors = self.get_tile_colors(
-                    j as i32,
-                    i as i32,
                     &vertices[vertices_index + 0..vertices_index + 3].try_into().unwrap(),
                     &vertices[vertices_index + 3..vertices_index + 6].try_into().unwrap(),
                     &vertices[vertices_index + 6..vertices_index + 9].try_into().unwrap(),
@@ -537,18 +552,9 @@ impl Game {
                 colors.extend_from_slice(&lb_color);
                 colors.extend_from_slice(&rb_color);
 
-                // Textures
-                texture_coords.push(1.0);
-                texture_coords.push(0.0);
-
-                texture_coords.push(0.0);
-                texture_coords.push(0.0);
-
-                texture_coords.push(0.0);
-                texture_coords.push(1.0);
-
-                texture_coords.push(1.0);
-                texture_coords.push(1.0);
+                // Texture
+                let texture_pos: [f32; 8] = self.get_texture_pos(j as i32, i as i32);
+                texture_coords.extend_from_slice(&texture_pos);
             }
         }
 
@@ -611,8 +617,6 @@ impl Game {
 
     fn get_tile_colors(
         &self,
-        x: i32,
-        y: i32,
         tr: &[f32; 3],
         tl: &[f32; 3],
         bl: &[f32; 3],
@@ -650,10 +654,10 @@ impl Game {
         br_pos[0] = br_pos[0] / br_pos[3];
         br_pos[1] = br_pos[1] / br_pos[3];
 
-        let mut lt_color: [f32; 4] = [1.0, 0.0, 0.0, 0.5];
-        let mut lb_color: [f32; 4] = [0.0, 1.0, 0.0, 0.5];
-        let mut rt_color: [f32; 4] = [0.0, 0.0, 1.0, 0.5];
-        let mut rb_color: [f32; 4] = [0.0, 0.0, 0.0, 0.5];
+        let mut lt_color: [f32; 4] = [1.0, 0.0, 0.0, 0.1];
+        let mut lb_color: [f32; 4] = [0.0, 1.0, 0.0, 0.1];
+        let mut rt_color: [f32; 4] = [0.0, 0.0, 1.0, 0.1];
+        let mut rb_color: [f32; 4] = [0.0, 0.0, 0.0, 0.1];
 
         let mut mouse_clip_space = [
             Game::convert_x_to_screen(self.mouse_pos.0),
@@ -693,6 +697,17 @@ impl Game {
         }
 
         result
+    }
+    fn get_texture_pos(&self, x: i32, y: i32) -> [f32; 8] {
+        let index = self.texture_indices[(y * self.grid_size.0 + x) as usize] as f32;
+        let size = (self.image.height() as f32) / (self.image.width() as f32);
+
+        let left = index * size;
+        let right = index * size + size;
+        let top = 0.0;
+        let bottom = 1.0;
+
+        [right, top, left, top, left, bottom, right, bottom]
     }
 }
 
