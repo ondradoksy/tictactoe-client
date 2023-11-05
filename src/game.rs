@@ -24,8 +24,8 @@ pub struct Game {
     aspect_ratio: f32,
     grid_size: (i32, i32),
     image: HtmlImageElement,
-    view_matrix: [f32; 16],
-    projection_matrix: [f32; 16],
+    view_matrix: Mat4,
+    projection_matrix: Mat4,
     last_time: f64,
 }
 #[wasm_bindgen(module = "game")]
@@ -128,35 +128,39 @@ impl Game {
 
     pub fn setup_shaders(gl: &WebGl2RenderingContext) -> Result<WebGlProgram, JsValue> {
         let vertex_shader_source =
-            "
-        attribute vec3 coordinates;
-        attribute vec4 vertexColor;
-        attribute vec2 aTextureCoord;
-
-        varying lowp vec4 vColor;
-        varying highp vec2 vTextureCoord;
-
+            "#version 300 es
+        in vec3 coordinates;
+        in vec4 vertexColor;
+        in vec2 aTextureCoord;
+        
+        out lowp vec4 vColor;
+        out highp vec2 vTextureCoord;
+        
         uniform mat4 viewMatrix;
         uniform mat4 projectionMatrix;
+        
+        in mat4 modelMatrix;
 
         void main(void) {
-            gl_Position = projectionMatrix * viewMatrix * vec4(coordinates, 1.0);
+            gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(coordinates, 1.0);
             vColor = vertexColor;
             vTextureCoord = aTextureCoord;
         }
         ";
 
         let fragment_shader_source =
-            "
+            "#version 300 es
         precision mediump float;
         
-        varying lowp vec4 vColor;
-        varying highp vec2 vTextureCoord;
+        in lowp vec4 vColor;
+        in highp vec2 vTextureCoord;
+
+        out vec4 outColor;
 
         uniform sampler2D uSampler;
 
         void main(void) {
-            gl_FragColor = mix(texture2D(uSampler, vTextureCoord), vColor, vColor.a);
+            outColor = mix(texture(uSampler, vTextureCoord), vColor, vColor.a);
         }
         "; // uniform vec4
 
@@ -208,7 +212,7 @@ impl Game {
 
         let coordinates_location = self.gl.get_attrib_location(&self.shader_program, "coordinates");
 
-        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
+        //self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&vertex_buffer));
         self.gl.vertex_attrib_pointer_with_i32(
             coordinates_location as u32,
             3,
@@ -330,6 +334,36 @@ impl Game {
         );
     }
 
+    fn setup_models(&mut self, models: &[f32]) {
+        let models_array = unsafe { js_sys::Float32Array::view(&models) };
+        let model_buffer = self.gl.create_buffer().unwrap();
+
+        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&model_buffer));
+        self.gl.buffer_data_with_array_buffer_view(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            &models_array,
+            WebGl2RenderingContext::STATIC_DRAW
+        );
+
+        let model_matrix_location = self.gl.get_attrib_location(
+            &self.shader_program,
+            "modelMatrix"
+        );
+
+        for i in 0..4 {
+            self.gl.enable_vertex_attrib_array((model_matrix_location as u32) + i);
+            self.gl.vertex_attrib_pointer_with_i32(
+                (model_matrix_location as u32) + i,
+                4,
+                WebGl2RenderingContext::FLOAT,
+                false,
+                64,
+                (i as i32) * 16
+            );
+            self.gl.vertex_attrib_divisor((model_matrix_location as u32) + i, 1);
+        }
+    }
+
     pub fn draw_grid(&mut self) {
         let mut vertices: Vec<f32> = Vec::with_capacity(
             (self.grid_size.0 * self.grid_size.1 * 4 * 3) as usize
@@ -351,15 +385,27 @@ impl Game {
             (self.grid_size.0 * self.grid_size.1 * 6 * 2) as usize
         );
 
+        let mut models: Vec<f32> = Vec::with_capacity(
+            (self.grid_size.0 * self.grid_size.1 * 16) as usize
+        );
+
+        self.projection_matrix = Mat4::create_perspective(PI / 2.0, self.aspect_ratio, 0.1, 100.0);
+
         self.view_matrix = Mat4::identity();
-        self.projection_matrix = Mat4::create_perspective(90.0, self.aspect_ratio, 0.1, 100.0);
-        self.view_matrix[14] = -1.0;
-        self.view_matrix.rotate((PI / 256.0) * (self.frames as f32), &[0.0, 1.0, 0.0]);
+        self.view_matrix[14] = -2.0;
+        self.view_matrix.rotate(PI / 4.0, &[0.0, 1.0, 0.0]);
+
+        let vao = self.gl.create_vertex_array().unwrap();
+        self.gl.bind_vertex_array(Some(&vao));
 
         self.setup_3d();
 
         // background
         {
+            let model_matrix = Mat4::identity();
+
+            models.extend_from_slice(&model_matrix);
+
             let index_start = vertices.len() / 3;
             indices.push((index_start + 0) as u16);
             indices.push((index_start + 1) as u16);
@@ -403,21 +449,40 @@ impl Game {
             texture_coords.push(0.0);
         }
 
+        let scale = if self.grid_size.0 > self.grid_size.1 {
+            1.0 / (self.grid_size.0 as f32)
+        } else {
+            1.0 / (self.grid_size.1 as f32)
+        };
+        let tile_size = if tile_width > tile_height { tile_height } else { tile_width };
         // Y
         for i in 0..self.grid_size.1 {
             // X
             for j in 0..self.grid_size.0 {
-                let left_relative: f32 = (j as f32) * tile_width + self.tile_spacing * tile_width;
-                let right_relative: f32 =
-                    ((j + 1) as f32) * tile_width - self.tile_spacing * tile_width;
-                let top_relative: f32 = (i as f32) * tile_height + self.tile_spacing * tile_height;
-                let bottom_relative: f32 =
-                    ((i + 1) as f32) * tile_height - self.tile_spacing * tile_height;
+                let origin_x = Game::convert_x_to_screen((j as f32) * tile_size + tile_size / 2.0);
+                let origin_y = Game::convert_y_to_screen((i as f32) * tile_size + tile_size / 2.0);
 
-                let left: f32 = Game::convert_x_to_screen(left_relative);
-                let right: f32 = Game::convert_x_to_screen(right_relative);
-                let top: f32 = Game::convert_y_to_screen(top_relative);
-                let bottom: f32 = Game::convert_y_to_screen(bottom_relative);
+                let left: f32 = -1.0;
+                let right: f32 = 1.0;
+                let top: f32 = 1.0;
+                let bottom: f32 = -1.0;
+
+                let mut model_matrix = Mat4::identity();
+                model_matrix[0] = scale * 0.8;
+                model_matrix[5] = scale * 0.8;
+                model_matrix[10] = scale * 0.8;
+                model_matrix.rotate(
+                    (PI / 256.0) * (self.frames as f32) +
+                        (PI / 256.0) * ((i * self.grid_size.0 + j) as f32),
+                    &[0.0, 1.0, 0.0]
+                );
+                model_matrix[12] = origin_x;
+                model_matrix[13] = origin_y;
+                model_matrix[14] = 0.1;
+                //model_matrix.translate(&[origin_x, origin_y, 0.0]);
+                //log!("{:?} {:?}", origin_x, origin_y);
+
+                models.extend_from_slice(&model_matrix);
 
                 let index_start = vertices.len() / 3;
                 // Triangle 1
@@ -433,19 +498,19 @@ impl Game {
                 // Vertices
                 vertices.push(right); // X
                 vertices.push(top); // Y
-                vertices.push(((self.grid_size.0 - j) as f32) * 0.05 + ((i as f32) % 2.0) * 0.05); // Z
+                vertices.push(0.0); // Z
 
                 vertices.push(left); // X
                 vertices.push(top); // Y
-                vertices.push(((self.grid_size.0 - j) as f32) * 0.05 + ((i as f32) % 2.0) * 0.05); // Z
+                vertices.push(0.0); // Z
 
                 vertices.push(left); // X
                 vertices.push(bottom); // Y
-                vertices.push(((self.grid_size.0 - j) as f32) * 0.05 + ((i as f32) % 2.0) * 0.05); // Z
+                vertices.push(0.0); // Z
 
                 vertices.push(right); // X
                 vertices.push(bottom); // Y
-                vertices.push(((self.grid_size.0 - j) as f32) * 0.05 + ((i as f32) % 2.0) * 0.05); // Z
+                vertices.push(0.0); // Z
 
                 // Colors
                 let vertices_index: usize = vertices.len() - 12;
@@ -456,7 +521,8 @@ impl Game {
                     &vertices[vertices_index + 0..vertices_index + 3].try_into().unwrap(),
                     &vertices[vertices_index + 3..vertices_index + 6].try_into().unwrap(),
                     &vertices[vertices_index + 6..vertices_index + 9].try_into().unwrap(),
-                    &vertices[vertices_index + 9..vertices_index + 12].try_into().unwrap()
+                    &vertices[vertices_index + 9..vertices_index + 12].try_into().unwrap(),
+                    &model_matrix
                 );
 
                 let mut iter = tile_colors.chunks_exact(4);
@@ -488,20 +554,25 @@ impl Game {
 
         let _texture = self.setup_texture(&texture_coords);
 
-        self.setup_indices(&indices);
         self.setup_vertices(&vertices);
         Game::setup_colors(&self.gl, &colors, &self.shader_program);
+        //self.setup_models(&models);
+        self.setup_indices(&indices);
 
         if self.frames % 100 == 0 {
-            log!("Renering: {:?} triangles", indices.len() / 3);
+            log!("Rendering: {:?} triangles", indices.len() / 3);
         }
-        self.gl.draw_elements_instanced_with_i32(
-            WebGl2RenderingContext::TRIANGLES,
-            indices.len() as i32,
-            WebGl2RenderingContext::UNSIGNED_SHORT,
-            0,
-            1
-        );
+
+        for i in 0..indices.len() / 6 {
+            self.setup_models(&models[i * 16..i * 16 + 16]);
+            self.gl.draw_elements_instanced_with_i32(
+                WebGl2RenderingContext::TRIANGLES,
+                6,
+                WebGl2RenderingContext::UNSIGNED_SHORT,
+                (i * 12) as i32,
+                1
+            );
+        }
     }
 
     pub fn on_mouse_move(&mut self, event: web_sys::MouseEvent) {
@@ -519,8 +590,8 @@ impl Game {
     fn update_viewport(&mut self) {
         self.gl.viewport(0, 0, self.gl.drawing_buffer_width(), self.gl.drawing_buffer_height());
 
-        let x_ratio = (self.gl.drawing_buffer_width() as f32) / (self.grid_size.0 as f32);
-        let y_ratio = (self.gl.drawing_buffer_height() as f32) / (self.grid_size.1 as f32);
+        let x_ratio = self.gl.drawing_buffer_width() as f32;
+        let y_ratio = self.gl.drawing_buffer_height() as f32;
 
         self.aspect_ratio = x_ratio / y_ratio;
     }
@@ -545,17 +616,30 @@ impl Game {
         tr: &[f32; 3],
         tl: &[f32; 3],
         bl: &[f32; 3],
-        br: &[f32; 3]
+        br: &[f32; 3],
+        model_matrix: &Mat4
     ) -> [f32; 16] {
         let mut tl_pos = [tl[0], tl[1], tl[2], 1.0];
         let mut bl_pos = [bl[0], bl[1], bl[2], 1.0];
         let mut tr_pos = [tr[0], tr[1], tr[2], 1.0];
         let mut br_pos = [br[0], br[1], br[2], 1.0];
 
-        tl_pos = tl_pos.mul_matrix(&self.view_matrix).mul_matrix(&self.projection_matrix);
-        bl_pos = bl_pos.mul_matrix(&self.view_matrix).mul_matrix(&self.projection_matrix);
-        tr_pos = tr_pos.mul_matrix(&self.view_matrix).mul_matrix(&self.projection_matrix);
-        br_pos = br_pos.mul_matrix(&self.view_matrix).mul_matrix(&self.projection_matrix);
+        tl_pos = tl_pos
+            .mul_matrix(&model_matrix)
+            .mul_matrix(&self.view_matrix)
+            .mul_matrix(&self.projection_matrix);
+        bl_pos = bl_pos
+            .mul_matrix(&model_matrix)
+            .mul_matrix(&self.view_matrix)
+            .mul_matrix(&self.projection_matrix);
+        tr_pos = tr_pos
+            .mul_matrix(&model_matrix)
+            .mul_matrix(&self.view_matrix)
+            .mul_matrix(&self.projection_matrix);
+        br_pos = br_pos
+            .mul_matrix(&model_matrix)
+            .mul_matrix(&self.view_matrix)
+            .mul_matrix(&self.projection_matrix);
 
         tr_pos[0] = tr_pos[0] / tr_pos[3];
         tr_pos[1] = tr_pos[1] / tr_pos[3];

@@ -39,7 +39,8 @@ features = [
     'MouseEvent',
     'HtmlImageElement',
     'WebGlTexture',
-    'Performance'
+    'Performance',
+    'WebGlVertexArrayObject'
 ]
 
 [dev-dependencies]
