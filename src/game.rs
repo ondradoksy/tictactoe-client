@@ -1,10 +1,9 @@
 use wasm_bindgen::prelude::*;
-use web_sys::HtmlImageElement;
-use web_sys::{ HtmlCanvasElement, WebGl2RenderingContext, WebGlShader, WebGlProgram };
+use web_sys::{ HtmlImageElement, WebGl2RenderingContext, WebGlShader, WebGlProgram };
 use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
-use webgl_matrix::{ Matrix, Vector, ProjectionMatrix, Mat4, Vec4, Mat3, Vec3, MulVectorMatrix };
+use webgl_matrix::{ Matrix, ProjectionMatrix, Mat4, MulVectorMatrix };
 use crate::utils::{ now, generate_random_u32 };
 
 // A macro to provide `println!(..)`-style syntax for `console.log` logging.
@@ -659,16 +658,6 @@ impl Game {
         let mut rt_color: [f32; 4] = [0.0, 0.0, 1.0, 0.1];
         let mut rb_color: [f32; 4] = [0.0, 0.0, 0.0, 0.1];
 
-        let mut mouse_clip_space = [
-            Game::convert_x_to_screen(self.mouse_pos.0),
-            Game::convert_y_to_screen(self.mouse_pos.1),
-            0.0,
-            1.0,
-        ];
-        mouse_clip_space = mouse_clip_space
-            .mul_matrix(&self.view_matrix)
-            .mul_matrix(&self.projection_matrix);
-
         if
             point_in_polygon(
                 Game::convert_x_to_screen(self.mouse_pos.0),
@@ -725,23 +714,6 @@ pub fn point_in_polygon(x: f32, y: f32, points: [(f32, f32); 4]) -> bool {
     }
 
     intersections % 2 == 1
-}
-
-fn is_in_range(n: f32, a: f32, b: f32) -> bool {
-    (a < n && n < b) || (a > n && n > b)
-}
-
-fn get_difference(a: f32, b: f32) -> f32 {
-    (a - b).abs()
-}
-
-fn get_distance(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
-    let x_diff = x2 - x1;
-    let y_diff = y2 - y1;
-
-    let squared_distance = (x_diff * x_diff + y_diff * y_diff) / 2.0;
-
-    squared_distance.sqrt()
 }
 
 pub fn are_intersecting(
