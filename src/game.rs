@@ -1,17 +1,14 @@
 use wasm_bindgen::prelude::*;
+use web_sys::{ HtmlCanvasElement, MouseEvent, WebGlBuffer };
 use web_sys::{ HtmlImageElement, WebGl2RenderingContext, WebGlShader, WebGlProgram };
+use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
+use std::ptr::null;
 use webgl_matrix::{ Matrix, ProjectionMatrix, Mat4, MulVectorMatrix };
 use crate::utils::{ now, generate_random_u32 };
-
-// A macro to provide `println!(..)`-style syntax for `console.log` logging.
-macro_rules! log {
-    ($($t:tt)*) => {
-        web_sys::console::log_1(&format!( $( $t )* ).into());
-    };
-}
+pub use crate::log;
 
 #[wasm_bindgen(module = "game")]
 pub struct Game {
@@ -27,11 +24,19 @@ pub struct Game {
     projection_matrix: Mat4,
     last_time: f64,
     texture_indices: Vec<usize>,
+    frame_times: VecDeque<f64>,
+    model_buffer: Option<WebGlBuffer>,
 }
 #[wasm_bindgen(module = "game")]
 impl Game {
-    pub fn new(canvas_id: &str) -> Game {
-        let gl: WebGl2RenderingContext = Game::init_webgl_context(&canvas_id);
+    pub fn new(canvas_id: &str, width: Option<i32>, height: Option<i32>) -> Game {
+        let document = web_sys::window().unwrap().document().unwrap();
+        let canvas = document.get_element_by_id(canvas_id).unwrap();
+        let canvas: web_sys::HtmlCanvasElement = canvas
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .unwrap();
+
+        let gl: WebGl2RenderingContext = Game::init_webgl_context(&canvas);
         let shader_program: WebGlProgram = Game::setup_shaders(&gl).unwrap();
         let canvas = web_sys
             ::window()
@@ -51,41 +56,51 @@ impl Game {
             mouse_pos: (0.0, 0.0),
             tile_scale: 0.8,
             aspect_ratio: 1.0,
-            grid_size: (10, 10),
+            grid_size: (width.unwrap_or(10), height.unwrap_or(10)),
             image: image,
             view_matrix: Mat4::identity(),
             projection_matrix: Mat4::create_perspective(90.0, 1.0, 0.1, 100.0),
             last_time: now(),
             texture_indices: Vec::new(),
+            frame_times: VecDeque::new(),
+            model_buffer: None,
         };
 
         instance
     }
 
     pub fn render(&mut self) {
+        let start = now();
         self.clear();
         self.update_viewport();
 
         self.draw_grid();
 
         self.frames += 1;
+
+        let time = now() - start;
+        self.frame_times.push_back(time);
+        if self.frame_times.len() > 100 {
+            self.frame_times.pop_front();
+        }
+
         if self.frames % 100 == 0 {
             log!(
-                "FRAME: {:?}, FPS: {:?}",
+                "Last 100 frames: {:?}, FPS: {:?}",
                 self.frames,
                 (1000.0 / (now() - self.last_time)) * 100.0
             );
             self.last_time = now();
+            log!(
+                "Frame times: AVG={:?}ms, MAX={:?}ms, MIN={:?}ms",
+                self.frame_times.iter().sum::<f64>() / 100.0,
+                self.frame_times.iter().copied().fold(f64::NAN, f64::max),
+                self.frame_times.iter().copied().fold(f64::NAN, f64::min)
+            );
         }
     }
 
-    pub fn init_webgl_context(canvas_id: &str) -> WebGl2RenderingContext {
-        let document = web_sys::window().unwrap().document().unwrap();
-        let canvas = document.get_element_by_id(canvas_id).unwrap();
-        let canvas: web_sys::HtmlCanvasElement = canvas
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .unwrap();
-
+    pub fn init_webgl_context(canvas: &HtmlCanvasElement) -> WebGl2RenderingContext {
         let gl: WebGl2RenderingContext = canvas
             .get_context("webgl2")
             .unwrap()
@@ -353,14 +368,23 @@ impl Game {
     }
 
     fn setup_models(&mut self, models: &[f32]) {
-        let models_array = unsafe { js_sys::Float32Array::view(&models) };
-        let model_buffer = self.gl.create_buffer().unwrap();
+        if self.model_buffer.is_none() {
+            self.model_buffer = self.gl.create_buffer();
+        }
+        self.update_models(models);
+    }
 
-        self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&model_buffer));
+    fn update_models(&mut self, models: &[f32]) {
+        let models_array = unsafe { js_sys::Float32Array::view(&models) };
+
+        self.gl.bind_buffer(
+            WebGl2RenderingContext::ARRAY_BUFFER,
+            Some(&self.model_buffer.as_ref().unwrap())
+        );
         self.gl.buffer_data_with_array_buffer_view(
             WebGl2RenderingContext::ARRAY_BUFFER,
             &models_array,
-            WebGl2RenderingContext::STATIC_DRAW
+            WebGl2RenderingContext::DYNAMIC_DRAW
         );
 
         let model_matrix_location = self.gl.get_attrib_location(

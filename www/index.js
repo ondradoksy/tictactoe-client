@@ -19,4 +19,8 @@ function render() {
 
     requestAnimationFrame(render);
 }
+window.updateSize = (w, h) => {
+    instance = wasm.Game.new("game", w, h);
+    instance.init();
+};
 requestAnimationFrame(render);
