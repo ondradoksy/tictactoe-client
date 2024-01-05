@@ -45,7 +45,7 @@ pub fn init() {
 
     let game_clone = game.clone();
     let cb = Closure::wrap(
-        Box::new(move |e: MouseEvent| {
+        Box::new(move |_e: MouseEvent| {
             game_clone.borrow_mut().click();
         }) as Box<dyn FnMut(_)>
     );

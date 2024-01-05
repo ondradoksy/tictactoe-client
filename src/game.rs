@@ -9,7 +9,6 @@ use webgl_matrix::{ Matrix, ProjectionMatrix, Mat4, MulVectorMatrix };
 use crate::utils::{ now, generate_random_u32 };
 pub use crate::log;
 
-#[wasm_bindgen(module = "game")]
 pub struct Game {
     frames: i64,
     gl: WebGl2RenderingContext,
@@ -27,7 +26,6 @@ pub struct Game {
     model_buffer: Option<WebGlBuffer>,
     hover_tile: Option<(i32, i32)>,
 }
-#[wasm_bindgen(module = "game")]
 impl Game {
     pub fn new(canvas_id: &str, width: Option<i32>, height: Option<i32>) -> Game {
         let document = web_sys::window().unwrap().document().unwrap();
