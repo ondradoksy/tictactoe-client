@@ -41,7 +41,14 @@ features = [
     'WebGlTexture',
     'Performance',
     'WebGlVertexArrayObject',
-    'Crypto'
+    'Crypto',
+    'WebSocket',
+    'Location',
+    'Blob',
+    'BinaryType',
+    'FileReader',
+    'ProgressEvent',
+    'ErrorEvent'
 ]
 
 [dev-dependencies]

@@ -1,11 +1,10 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{ HtmlCanvasElement, MouseEvent, WebGlBuffer };
+use web_sys::{ HtmlCanvasElement, WebGlBuffer };
 use web_sys::{ HtmlImageElement, WebGl2RenderingContext, WebGlShader, WebGlProgram };
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
-use std::ptr::null;
 use webgl_matrix::{ Matrix, ProjectionMatrix, Mat4, MulVectorMatrix };
 use crate::utils::{ now, generate_random_u32 };
 pub use crate::log;
@@ -38,13 +37,6 @@ impl Game {
 
         let gl: WebGl2RenderingContext = Game::init_webgl_context(&canvas);
         let shader_program: WebGlProgram = Game::setup_shaders(&gl).unwrap();
-        let canvas = web_sys
-            ::window()
-            .unwrap()
-            .document()
-            .unwrap()
-            .get_element_by_id(&canvas_id)
-            .unwrap();
 
         let image = web_sys::HtmlImageElement::new().unwrap();
         image.set_src("texture.png");
@@ -123,9 +115,9 @@ impl Game {
         self.texture_indices = Vec::with_capacity((self.grid_size.0 * self.grid_size.1) as usize);
 
         // Y
-        for i in 0..self.grid_size.1 {
+        for _i in 0..self.grid_size.1 {
             // X
-            for j in 0..self.grid_size.0 {
+            for _j in 0..self.grid_size.0 {
                 self.texture_indices.push(generate_random_u32(0, 3) as usize);
             }
         }
