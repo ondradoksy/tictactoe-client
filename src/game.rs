@@ -25,6 +25,7 @@ pub struct Game {
     texture_indices: Vec<usize>,
     frame_times: VecDeque<f64>,
     model_buffer: Option<WebGlBuffer>,
+    hover_tile: Option<(i32, i32)>,
 }
 #[wasm_bindgen(module = "game")]
 impl Game {
@@ -41,7 +42,7 @@ impl Game {
         let image = web_sys::HtmlImageElement::new().unwrap();
         image.set_src("texture.png");
 
-        let instance = Game {
+        let mut instance = Self {
             frames: 0,
             gl: gl,
             shader_program: shader_program,
@@ -56,7 +57,10 @@ impl Game {
             texture_indices: Vec::new(),
             frame_times: VecDeque::new(),
             model_buffer: None,
+            hover_tile: None,
         };
+
+        instance.init();
 
         instance
     }
@@ -489,6 +493,9 @@ impl Game {
             1.0 / (self.grid_size.1 as f32)
         };
         let tile_size = if tile_width > tile_height { tile_height } else { tile_width };
+
+        self.hover_tile = None;
+
         // Y
         for i in 0..self.grid_size.1 {
             // X
@@ -500,21 +507,6 @@ impl Game {
                 let right: f32 = 1.0;
                 let top: f32 = 1.0;
                 let bottom: f32 = -1.0;
-
-                let mut model_matrix = Mat4::identity();
-                model_matrix[0] = scale * self.tile_scale;
-                model_matrix[5] = scale * self.tile_scale;
-                model_matrix[10] = scale * self.tile_scale;
-                model_matrix.rotate(
-                    (PI / 256.0) * (self.frames as f32) +
-                        (PI / 256.0) * ((i * self.grid_size.0 + j) as f32),
-                    &[0.0, 1.0, 0.0]
-                );
-                model_matrix[12] = origin_x;
-                model_matrix[13] = origin_y;
-                model_matrix[14] = 0.1;
-
-                models.extend_from_slice(&model_matrix);
 
                 let index_start = vertices.len() / 3;
                 // Triangle 1
@@ -544,10 +536,50 @@ impl Game {
                 vertices.push(bottom); // Y
                 vertices.push(0.0); // Z
 
+                // Model
+                let vertices_index: usize = vertices.len() - 12;
+                let mut model_matrix = Mat4::identity();
+                model_matrix[0] = scale * self.tile_scale;
+                model_matrix[5] = scale * self.tile_scale;
+                model_matrix[10] = scale * self.tile_scale;
+
+                model_matrix[12] = origin_x;
+                model_matrix[13] = origin_y;
+                model_matrix[14] = 0.1;
+
+                let screen_pos = get_pos_center(
+                    &self.get_tile_pos_on_screen(
+                        &vertices[vertices_index + 0..vertices_index + 3].try_into().unwrap(),
+                        &vertices[vertices_index + 3..vertices_index + 6].try_into().unwrap(),
+                        &vertices[vertices_index + 6..vertices_index + 9].try_into().unwrap(),
+                        &vertices[vertices_index + 9..vertices_index + 12].try_into().unwrap(),
+                        &model_matrix
+                    )
+                );
+
+                let rotation_multiplier = 0.1;
+
+                model_matrix.rotate(
+                    rotation_multiplier *
+                        PI *
+                        (Game::convert_x_to_screen(self.mouse_pos.0) - screen_pos[0]),
+                    &[0.0, 1.0, 0.0]
+                );
+                model_matrix.rotate(
+                    -rotation_multiplier *
+                        PI *
+                        (Game::convert_y_to_screen(self.mouse_pos.1) - screen_pos[1]),
+                    &[1.0, 0.0, 0.0]
+                );
+
+                models.extend_from_slice(&model_matrix);
+
                 // Colors
                 let vertices_index: usize = vertices.len() - 12;
 
                 let tile_colors = self.get_tile_colors(
+                    j,
+                    i,
                     &vertices[vertices_index + 0..vertices_index + 3].try_into().unwrap(),
                     &vertices[vertices_index + 3..vertices_index + 6].try_into().unwrap(),
                     &vertices[vertices_index + 6..vertices_index + 9].try_into().unwrap(),
@@ -631,13 +663,74 @@ impl Game {
     }
 
     fn get_tile_colors(
-        &self,
+        &mut self,
+        x: i32,
+        y: i32,
         tr: &[f32; 3],
         tl: &[f32; 3],
         bl: &[f32; 3],
         br: &[f32; 3],
         model_matrix: &Mat4
     ) -> [f32; 16] {
+        let mut lt_color: [f32; 4] = [1.0, 0.0, 0.0, 0.1];
+        let mut lb_color: [f32; 4] = [0.0, 1.0, 0.0, 0.1];
+        let mut rt_color: [f32; 4] = [0.0, 0.0, 1.0, 0.1];
+        let mut rb_color: [f32; 4] = [0.0, 0.0, 0.0, 0.1];
+
+        let screen_pos = self.get_tile_pos_on_screen(tr, tl, bl, br, &model_matrix);
+
+        if
+            self.hover_tile == None &&
+            point_in_polygon(
+                Game::convert_x_to_screen(self.mouse_pos.0),
+                Game::convert_y_to_screen(self.mouse_pos.1),
+                [
+                    (screen_pos[2], screen_pos[3]),
+                    (screen_pos[4], screen_pos[5]),
+                    (screen_pos[6], screen_pos[7]),
+                    (screen_pos[0], screen_pos[1]),
+                ]
+            )
+        {
+            lt_color = [1.0, 1.0, 1.0, 0.8];
+            lb_color = [1.0, 1.0, 1.0, 0.8];
+            rt_color = [1.0, 1.0, 1.0, 0.8];
+            rb_color = [1.0, 1.0, 1.0, 0.8];
+
+            self.hover_tile = Some((x, y));
+        }
+
+        let mut result: [f32; 16] = [0.0; 16];
+
+        for i in 0..4 {
+            result[i + 0] = lt_color[i];
+            result[i + 4] = lb_color[i];
+            result[i + 8] = rt_color[i];
+            result[i + 12] = rb_color[i];
+        }
+
+        result
+    }
+    fn get_texture_pos(&self, x: i32, y: i32) -> [f32; 8] {
+        let index = self.texture_indices[(y * self.grid_size.0 + x) as usize] as f32;
+        let size = (self.image.height() as f32) / (self.image.width() as f32);
+
+        let left = index * size;
+        let right = index * size + size;
+        let top = 0.0;
+        let bottom = 1.0;
+
+        [right, top, left, top, left, bottom, right, bottom]
+    }
+
+    fn get_tile_pos_on_screen(
+        &self,
+        tr: &[f32; 3],
+        tl: &[f32; 3],
+        bl: &[f32; 3],
+        br: &[f32; 3],
+        model_matrix: &Mat4
+    ) -> [f32; 8] {
         let mut tl_pos = [tl[0], tl[1], tl[2], 1.0];
         let mut bl_pos = [bl[0], bl[1], bl[2], 1.0];
         let mut tr_pos = [tr[0], tr[1], tr[2], 1.0];
@@ -669,51 +762,25 @@ impl Game {
         br_pos[0] = br_pos[0] / br_pos[3];
         br_pos[1] = br_pos[1] / br_pos[3];
 
-        let mut lt_color: [f32; 4] = [1.0, 0.0, 0.0, 0.1];
-        let mut lb_color: [f32; 4] = [0.0, 1.0, 0.0, 0.1];
-        let mut rt_color: [f32; 4] = [0.0, 0.0, 1.0, 0.1];
-        let mut rb_color: [f32; 4] = [0.0, 0.0, 0.0, 0.1];
-
-        if
-            point_in_polygon(
-                Game::convert_x_to_screen(self.mouse_pos.0),
-                Game::convert_y_to_screen(self.mouse_pos.1),
-                [
-                    (tl_pos[0], tl_pos[1]),
-                    (bl_pos[0], bl_pos[1]),
-                    (br_pos[0], br_pos[1]),
-                    (tr_pos[0], tr_pos[1]),
-                ]
-            )
-        {
-            lt_color = [1.0, 1.0, 1.0, 1.0];
-            lb_color = [1.0, 1.0, 1.0, 1.0];
-            rt_color = [1.0, 1.0, 1.0, 1.0];
-            rb_color = [1.0, 1.0, 1.0, 1.0];
-        }
-
-        let mut result: [f32; 16] = [0.0; 16];
-
-        for i in 0..4 {
-            result[i + 0] = lt_color[i];
-            result[i + 4] = lb_color[i];
-            result[i + 8] = rt_color[i];
-            result[i + 12] = rb_color[i];
-        }
-
-        result
+        [tr_pos[0], tr_pos[1], tl_pos[0], tl_pos[1], bl_pos[0], bl_pos[1], br_pos[0], br_pos[1]]
     }
-    fn get_texture_pos(&self, x: i32, y: i32) -> [f32; 8] {
-        let index = self.texture_indices[(y * self.grid_size.0 + x) as usize] as f32;
-        let size = (self.image.height() as f32) / (self.image.width() as f32);
 
-        let left = index * size;
-        let right = index * size + size;
-        let top = 0.0;
-        let bottom = 1.0;
-
-        [right, top, left, top, left, bottom, right, bottom]
+    pub fn click(&self) {
+        log!("Clicked on {:?}", self.hover_tile);
     }
+}
+
+// tl, bl, tr, br
+fn get_pos_center(tile_pos: &[f32; 8]) -> [f32; 2] {
+    let top_center = tile_pos[0] + (tile_pos[4] - tile_pos[0]) / 2.0;
+    let bottom_center = tile_pos[3] + (tile_pos[6] - tile_pos[2]) / 2.0;
+    let x = (top_center + bottom_center) / 2.0;
+
+    let left_center = tile_pos[1] + (tile_pos[3] - tile_pos[1]) / 2.0;
+    let right_center = tile_pos[5] + (tile_pos[7] - tile_pos[5]) / 2.0;
+    let y = (left_center + right_center) / 2.0;
+
+    [x, y]
 }
 
 pub fn point_in_polygon(x: f32, y: f32, points: [(f32, f32); 4]) -> bool {

@@ -40,3 +40,10 @@ pub fn generate_random_u32(min: u32, max: u32) -> u32 {
     // Return a random i32 value between the specified min and max values.
     (random_usize % (max - min + 1)) + min
 }
+
+pub fn window() -> web_sys::Window {
+    web_sys::window().expect("no global 'window' exists")
+}
+pub fn document() -> web_sys::Document {
+    window().document().expect("should have a document on window")
+}
