@@ -1,3 +1,5 @@
+use serde::{ Serialize, Deserialize };
+
 extern crate web_sys;
 
 // A macro to provide `println!(..)`-style syntax for `console.log` logging.
@@ -46,4 +48,18 @@ pub fn window() -> web_sys::Window {
 }
 pub fn document() -> web_sys::Document {
     window().document().expect("should have a document on window")
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct Size {
+    pub x: i32,
+    pub y: i32,
+}
+impl Size {
+    pub fn new(x: i32, y: i32) -> Self {
+        Self {
+            x: x,
+            y: y,
+        }
+    }
 }

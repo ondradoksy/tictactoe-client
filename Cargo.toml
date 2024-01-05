@@ -50,7 +50,8 @@ features = [
     'BinaryType',
     'FileReader',
     'ProgressEvent',
-    'ErrorEvent'
+    'ErrorEvent',
+    'WheelEvent'
 ]
 
 [dev-dependencies]

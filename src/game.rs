@@ -1,22 +1,22 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{ HtmlCanvasElement, WebGlBuffer };
+use web_sys::{ HtmlCanvasElement, WebGlBuffer, MouseEvent, WheelEvent };
 use web_sys::{ HtmlImageElement, WebGl2RenderingContext, WebGlShader, WebGlProgram };
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
 use webgl_matrix::{ Matrix, ProjectionMatrix, Mat4, MulVectorMatrix };
-use crate::utils::{ now, generate_random_u32 };
+use crate::mouse::{ MouseTracker, FloatPos };
+use crate::utils::{ now, generate_random_u32, Size };
 pub use crate::log;
 
 pub struct Game {
     frames: i64,
     gl: WebGl2RenderingContext,
     shader_program: WebGlProgram,
-    mouse_pos: (f32, f32),
     tile_scale: f32,
     aspect_ratio: f32,
-    grid_size: (i32, i32),
+    grid_size: Size,
     image: HtmlImageElement,
     view_matrix: Mat4,
     projection_matrix: Mat4,
@@ -24,7 +24,8 @@ pub struct Game {
     texture_indices: Vec<usize>,
     frame_times: VecDeque<f64>,
     model_buffer: Option<WebGlBuffer>,
-    hover_tile: Option<(i32, i32)>,
+    hover_tile: Option<Size>,
+    mouse_tracker: MouseTracker,
 }
 impl Game {
     pub fn new(canvas_id: &str, width: Option<i32>, height: Option<i32>) -> Game {
@@ -44,18 +45,18 @@ impl Game {
             frames: 0,
             gl: gl,
             shader_program: shader_program,
-            mouse_pos: (0.0, 0.0),
             tile_scale: 0.8,
             aspect_ratio: 1.0,
-            grid_size: (width.unwrap_or(10), height.unwrap_or(10)),
+            grid_size: Size::new(width.unwrap_or(10), height.unwrap_or(10)),
             image: image,
             view_matrix: Mat4::identity(),
-            projection_matrix: Mat4::create_perspective(90.0, 1.0, 0.1, 100.0),
+            projection_matrix: Mat4::create_perspective(PI / 2.0, 1.0, 0.1, 100.0),
             last_time: now(),
             texture_indices: Vec::new(),
             frame_times: VecDeque::new(),
             model_buffer: None,
             hover_tile: None,
+            mouse_tracker: MouseTracker::new(),
         };
 
         instance.init();
@@ -110,16 +111,17 @@ impl Game {
     }
 
     pub fn init(&mut self) {
+        self.view_matrix[14] = -2.0; // Default zoom
         self.init_texture_indices();
     }
 
     fn init_texture_indices(&mut self) {
-        self.texture_indices = Vec::with_capacity((self.grid_size.0 * self.grid_size.1) as usize);
+        self.texture_indices = Vec::with_capacity((self.grid_size.x * self.grid_size.y) as usize);
 
         // Y
-        for _i in 0..self.grid_size.1 {
+        for _i in 0..self.grid_size.y {
             // X
-            for _j in 0..self.grid_size.0 {
+            for _j in 0..self.grid_size.x {
                 self.texture_indices.push(generate_random_u32(0, 3) as usize);
             }
         }
@@ -402,34 +404,30 @@ impl Game {
 
     pub fn draw_grid(&mut self) {
         let mut vertices: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.0 * self.grid_size.1 * 4 * 3) as usize
+            (self.grid_size.x * self.grid_size.y * 4 * 3) as usize
         );
         let mut colors: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.0 * self.grid_size.1 * 4 * 4) as usize
+            (self.grid_size.x * self.grid_size.y * 4 * 4) as usize
         );
         let mut indices: Vec<u16> = Vec::with_capacity(
-            (self.grid_size.0 * self.grid_size.1 * 6) as usize
+            (self.grid_size.x * self.grid_size.y * 6) as usize
         );
 
-        let width: f32 = i32::try_from(self.grid_size.0).unwrap() as f32;
-        let height: f32 = i32::try_from(self.grid_size.1).unwrap() as f32;
+        let width: f32 = i32::try_from(self.grid_size.x).unwrap() as f32;
+        let height: f32 = i32::try_from(self.grid_size.y).unwrap() as f32;
 
         let tile_width: f32 = 1.0 / width;
         let tile_height: f32 = 1.0 / height;
 
         let mut texture_coords: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.0 * self.grid_size.1 * 6 * 2) as usize
+            (self.grid_size.x * self.grid_size.y * 6 * 2) as usize
         );
 
         let mut models: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.0 * self.grid_size.1 * 16) as usize
+            (self.grid_size.x * self.grid_size.y * 16) as usize
         );
 
         self.projection_matrix = Mat4::create_perspective(PI / 2.0, self.aspect_ratio, 0.1, 100.0);
-
-        self.view_matrix = Mat4::identity();
-        self.view_matrix[14] = -2.0;
-        self.view_matrix.rotate(PI / 4.0, &[0.0, 1.0, 0.0]);
 
         let vao = self.gl.create_vertex_array().unwrap();
         self.gl.bind_vertex_array(Some(&vao));
@@ -485,19 +483,19 @@ impl Game {
             texture_coords.push(0.0);
         }
 
-        let scale = if self.grid_size.0 > self.grid_size.1 {
-            1.0 / (self.grid_size.0 as f32)
+        let scale = if self.grid_size.x > self.grid_size.y {
+            1.0 / (self.grid_size.x as f32)
         } else {
-            1.0 / (self.grid_size.1 as f32)
+            1.0 / (self.grid_size.y as f32)
         };
         let tile_size = if tile_width > tile_height { tile_height } else { tile_width };
 
         self.hover_tile = None;
 
         // Y
-        for i in 0..self.grid_size.1 {
+        for i in 0..self.grid_size.y {
             // X
-            for j in 0..self.grid_size.0 {
+            for j in 0..self.grid_size.x {
                 let origin_x = Game::convert_x_to_screen((j as f32) * tile_size + tile_size / 2.0);
                 let origin_y = Game::convert_y_to_screen((i as f32) * tile_size + tile_size / 2.0);
 
@@ -560,13 +558,13 @@ impl Game {
                 model_matrix.rotate(
                     rotation_multiplier *
                         PI *
-                        (Game::convert_x_to_screen(self.mouse_pos.0) - screen_pos[0]),
+                        (Game::convert_x_to_screen(self.mouse_tracker.get_pos().x) - screen_pos[0]),
                     &[0.0, 1.0, 0.0]
                 );
                 model_matrix.rotate(
                     -rotation_multiplier *
                         PI *
-                        (Game::convert_y_to_screen(self.mouse_pos.1) - screen_pos[1]),
+                        (Game::convert_y_to_screen(self.mouse_tracker.get_pos().y) - screen_pos[1]),
                     &[1.0, 0.0, 0.0]
                 );
 
@@ -626,11 +624,14 @@ impl Game {
         }
     }
 
-    pub fn on_mouse_move(&mut self, event: web_sys::MouseEvent) {
-        self.mouse_pos = (
-            (event.client_x() as f32) / (self.gl.drawing_buffer_width() as f32),
-            (event.client_y() as f32) / (self.gl.drawing_buffer_height() as f32),
-        );
+    pub fn on_mouse_move(&mut self, e: MouseEvent) {
+        let last_pos = self.mouse_tracker.get_pos();
+        self.update_mouse_pos(&e);
+        if self.mouse_tracker.is_down(0) {
+            let diff = last_pos - self.mouse_tracker.get_pos();
+            self.view_matrix[12] -= diff.x;
+            self.view_matrix[13] += diff.y;
+        }
     }
 
     fn clear(&self) {
@@ -680,8 +681,8 @@ impl Game {
         if
             self.hover_tile == None &&
             point_in_polygon(
-                Game::convert_x_to_screen(self.mouse_pos.0),
-                Game::convert_y_to_screen(self.mouse_pos.1),
+                Game::convert_x_to_screen(self.mouse_tracker.get_pos().x),
+                Game::convert_y_to_screen(self.mouse_tracker.get_pos().y),
                 [
                     (screen_pos[2], screen_pos[3]),
                     (screen_pos[4], screen_pos[5]),
@@ -695,7 +696,7 @@ impl Game {
             rt_color = [1.0, 1.0, 1.0, 0.8];
             rb_color = [1.0, 1.0, 1.0, 0.8];
 
-            self.hover_tile = Some((x, y));
+            self.hover_tile = Some(Size::new(x, y));
         }
 
         let mut result: [f32; 16] = [0.0; 16];
@@ -710,7 +711,7 @@ impl Game {
         result
     }
     fn get_texture_pos(&self, x: i32, y: i32) -> [f32; 8] {
-        let index = self.texture_indices[(y * self.grid_size.0 + x) as usize] as f32;
+        let index = self.texture_indices[(y * self.grid_size.x + x) as usize] as f32;
         let size = (self.image.height() as f32) / (self.image.width() as f32);
 
         let left = index * size;
@@ -763,15 +764,71 @@ impl Game {
         [tr_pos[0], tr_pos[1], tl_pos[0], tl_pos[1], bl_pos[0], bl_pos[1], br_pos[0], br_pos[1]]
     }
 
-    pub fn click(&self) {
-        log!("Clicked on {:?}", self.hover_tile);
+    pub fn on_mouse_down(&mut self, e: MouseEvent) {
+        log!("mousedown {:?}", e.button());
+        self.update_mouse_pos(&e);
+        match e.button() {
+            0 => {
+                // Left
+                self.mouse_tracker.set_down(0);
+            }
+            2 => {
+                // Right
+                self.mouse_tracker.set_down(2);
+            }
+            _ => {}
+        }
+        e.prevent_default();
+        e.stop_propagation();
+    }
+    pub fn on_mouse_up(&mut self, e: MouseEvent) {
+        log!("mouseup {:?}", e.button());
+        self.update_mouse_pos(&e);
+        match e.button() {
+            0 => {
+                // Left
+                self.mouse_tracker.set_up(0);
+            }
+            2 => {
+                // Right
+                self.mouse_tracker.set_up(2);
+            }
+            _ => {}
+        }
+        e.prevent_default();
+        e.stop_propagation();
+    }
+    pub fn on_scroll(&mut self, e: WheelEvent) {
+        self.mouse_tracker.set_pos(
+            FloatPos::new(
+                (e.client_x() as f32) / (self.gl.drawing_buffer_width() as f32),
+                (e.client_y() as f32) / (self.gl.drawing_buffer_height() as f32)
+            )
+        );
+
+        let direction: f32 = if e.delta_y() < 0.0 { 1.0 } else { -1.0 };
+        log!("scroll {:?}", direction);
+        self.view_matrix[14] += direction * 0.01;
+        if self.view_matrix[14] > 0.01 {
+            self.view_matrix[14] = 0.01;
+        }
+        e.prevent_default();
+        e.stop_propagation();
+    }
+    fn update_mouse_pos(&mut self, e: &MouseEvent) {
+        self.mouse_tracker.set_pos(
+            FloatPos::new(
+                (e.client_x() as f32) / (self.gl.drawing_buffer_width() as f32),
+                (e.client_y() as f32) / (self.gl.drawing_buffer_height() as f32)
+            )
+        );
     }
 }
 
 // tl, bl, tr, br
 fn get_pos_center(tile_pos: &[f32; 8]) -> [f32; 2] {
     let top_center = tile_pos[0] + (tile_pos[4] - tile_pos[0]) / 2.0;
-    let bottom_center = tile_pos[3] + (tile_pos[6] - tile_pos[2]) / 2.0;
+    let bottom_center = tile_pos[2] + (tile_pos[6] - tile_pos[2]) / 2.0;
     let x = (top_center + bottom_center) / 2.0;
 
     let left_center = tile_pos[1] + (tile_pos[3] - tile_pos[1]) / 2.0;
