@@ -25,11 +25,14 @@ impl MouseTracker {
     pub fn get_time_held(&mut self, n: usize) -> Option<f64> {
         self.buttons[n].get_time_held()
     }
-    pub fn set_pos(&mut self, pos: FloatPos) {
+    pub fn set_current_pos(&mut self, pos: FloatPos) {
         self.current_pos = pos;
     }
-    pub fn get_pos(&self) -> FloatPos {
+    pub fn get_current_pos(&self) -> FloatPos {
         self.current_pos
+    }
+    pub fn get_pos(&self, n: usize) -> Option<FloatPos> {
+        self.buttons[n].get_pos()
     }
 }
 
@@ -65,6 +68,9 @@ impl Button {
         }
         Some(now() - self.timestamp.unwrap())
     }
+    pub fn get_pos(&self) -> Option<FloatPos> {
+        self.pos
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -78,6 +84,15 @@ impl FloatPos {
             x,
             y,
         }
+    }
+    pub fn abs(&self) -> Self {
+        Self {
+            x: self.x.abs(),
+            y: self.y.abs(),
+        }
+    }
+    pub fn max(&self) -> f32 {
+        if self.x > self.y { self.x } else { self.y }
     }
 }
 impl Sub for FloatPos {

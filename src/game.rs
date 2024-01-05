@@ -558,13 +558,15 @@ impl Game {
                 model_matrix.rotate(
                     rotation_multiplier *
                         PI *
-                        (Game::convert_x_to_screen(self.mouse_tracker.get_pos().x) - screen_pos[0]),
+                        (Game::convert_x_to_screen(self.mouse_tracker.get_current_pos().x) -
+                            screen_pos[0]),
                     &[0.0, 1.0, 0.0]
                 );
                 model_matrix.rotate(
                     -rotation_multiplier *
                         PI *
-                        (Game::convert_y_to_screen(self.mouse_tracker.get_pos().y) - screen_pos[1]),
+                        (Game::convert_y_to_screen(self.mouse_tracker.get_current_pos().y) -
+                            screen_pos[1]),
                     &[1.0, 0.0, 0.0]
                 );
 
@@ -625,10 +627,10 @@ impl Game {
     }
 
     pub fn on_mouse_move(&mut self, e: MouseEvent) {
-        let last_pos = self.mouse_tracker.get_pos();
+        let last_pos = self.mouse_tracker.get_current_pos();
         self.update_mouse_pos(&e);
         if self.mouse_tracker.is_down(0) {
-            let diff = last_pos - self.mouse_tracker.get_pos();
+            let diff = last_pos - self.mouse_tracker.get_current_pos();
             self.view_matrix[12] -= diff.x;
             self.view_matrix[13] += diff.y;
         }
@@ -681,8 +683,8 @@ impl Game {
         if
             self.hover_tile == None &&
             point_in_polygon(
-                Game::convert_x_to_screen(self.mouse_tracker.get_pos().x),
-                Game::convert_y_to_screen(self.mouse_tracker.get_pos().y),
+                Game::convert_x_to_screen(self.mouse_tracker.get_current_pos().x),
+                Game::convert_y_to_screen(self.mouse_tracker.get_current_pos().y),
                 [
                     (screen_pos[2], screen_pos[3]),
                     (screen_pos[4], screen_pos[5]),
@@ -787,6 +789,13 @@ impl Game {
         match e.button() {
             0 => {
                 // Left
+                let diff =
+                    self.mouse_tracker.get_current_pos() - self.mouse_tracker.get_pos(0).unwrap();
+
+                if self.mouse_tracker.get_time_held(0).unwrap() < 1000.0 && diff.abs().max() < 0.1 {
+                    // Click
+                    log!("Clicked on {:?}", self.hover_tile);
+                }
                 self.mouse_tracker.set_up(0);
             }
             2 => {
@@ -799,7 +808,7 @@ impl Game {
         e.stop_propagation();
     }
     pub fn on_scroll(&mut self, e: WheelEvent) {
-        self.mouse_tracker.set_pos(
+        self.mouse_tracker.set_current_pos(
             FloatPos::new(
                 (e.client_x() as f32) / (self.gl.drawing_buffer_width() as f32),
                 (e.client_y() as f32) / (self.gl.drawing_buffer_height() as f32)
@@ -816,7 +825,7 @@ impl Game {
         e.stop_propagation();
     }
     fn update_mouse_pos(&mut self, e: &MouseEvent) {
-        self.mouse_tracker.set_pos(
+        self.mouse_tracker.set_current_pos(
             FloatPos::new(
                 (e.client_x() as f32) / (self.gl.drawing_buffer_width() as f32),
                 (e.client_y() as f32) / (self.gl.drawing_buffer_height() as f32)
