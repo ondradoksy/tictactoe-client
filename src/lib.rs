@@ -18,7 +18,6 @@ extern crate web_sys;
 pub fn init() {
     log!("Starting...");
     set_panic_hook();
-    start_websocket();
 
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
@@ -70,6 +69,9 @@ pub fn init() {
     );
 
     request_animation_frame(g.borrow().as_ref().unwrap());
+
+    let ws = start_websocket();
+    let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
 }
 
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {
