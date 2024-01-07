@@ -1,12 +1,10 @@
 use serde::Deserialize;
 
-use crate::player::Player;
-
 #[derive(Deserialize)]
 pub(crate) struct GameInfo {
     pub id: u32,
-    pub player_list: Vec<Player>,
-    pub creator: Player,
+    pub player_list: Vec<u32>,
+    pub creator: u32,
     pub current_turn: u32,
     pub hotjoin: bool,
     pub player_limit: u32,

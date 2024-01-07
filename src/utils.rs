@@ -1,6 +1,6 @@
 use serde::{ Serialize, Deserialize };
 use wasm_bindgen::{ JsCast, closure::Closure };
-use web_sys::{ HtmlElement, Window, Document };
+use web_sys::{ HtmlElement, Window, Document, Event, Element };
 
 extern crate web_sys;
 
@@ -88,4 +88,12 @@ pub fn get_element_by_id(id: &str) -> HtmlElement {
         .expect("Element not found")
         .dyn_into()
         .expect("Not HtmlElement type")
+}
+
+pub fn add_event_listener(element: &Element, event: &str, f: impl Fn(Event) + 'static) {
+    let cb = Closure::wrap(Box::new(f) as Box<dyn FnMut(_)>);
+    element
+        .add_event_listener_with_callback(event, &cb.as_ref().unchecked_ref())
+        .expect("Something went wrong");
+    cb.forget();
 }

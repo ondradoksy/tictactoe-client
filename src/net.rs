@@ -1,9 +1,14 @@
 use js_sys::JSON;
 use serde::{ Deserialize, Serialize };
 use wasm_bindgen::{ closure::Closure, JsCast, JsValue };
-use web_sys::{ WebSocket, MessageEvent, ErrorEvent, HtmlElement };
+use web_sys::{ WebSocket, MessageEvent, ErrorEvent, HtmlElement, Event };
 
-use crate::{ log, player::Player, utils::{ players_div, document, games_div }, gameinfo::GameInfo };
+use crate::{
+    log,
+    player::Player,
+    utils::{ players_div, document, games_div, add_event_listener },
+    gameinfo::GameInfo,
+};
 
 pub fn start_websocket() -> WebSocket {
     let ip = web_sys::window().unwrap().location().hostname().unwrap();
@@ -12,6 +17,8 @@ pub fn start_websocket() -> WebSocket {
     log!("Connecting to {}", format!("wss://{}:9001/", ip));
 
     ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+
+    let ws_clone = ws.clone();
     let onmessage_callback = Closure::<dyn FnMut(_)>::new(move |e: MessageEvent| {
         // Handle difference Text/Binary,...
         if let Ok(abuf) = e.data().dyn_into::<js_sys::ArrayBuffer>() {
@@ -28,7 +35,7 @@ pub fn start_websocket() -> WebSocket {
                         update_player_list(event.content.as_str());
                     }
                     "games" => {
-                        update_game_list(event.content.as_str());
+                        update_game_list(event.content.as_str(), &ws_clone);
                     }
                     _ => {
                         log!("{:?} {:?}", event.event, event.content);
@@ -119,7 +126,7 @@ fn update_player_list(content: &str) {
         list.append_child(&div).expect("Unable to add player to list");
     }
 }
-fn update_game_list(content: &str) {
+fn update_game_list(content: &str, ws: &WebSocket) {
     let game_list: Vec<GameInfo> = serde_wasm_bindgen
         ::from_value(JSON::parse(content).unwrap())
         .unwrap();
@@ -130,6 +137,12 @@ fn update_game_list(content: &str) {
     for g in game_list {
         let div = document().create_element("div").expect("Unable to create div");
         div.set_text_content(Some(format!("{} - {} players", g.id, g.player_list.len()).as_str()));
+
+        let ws_clone = ws.clone();
+        add_event_listener(&div, "click", move |_| {
+            send(&ws_clone, "join_game", format!("{{\"id\":{}}}", g.id).as_str());
+        });
+
         list.append_child(&div).expect("Unable to add game to list");
     }
 }
