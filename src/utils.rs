@@ -67,19 +67,11 @@ impl Size {
 }
 
 pub fn players_div() -> HtmlElement {
-    document()
-        .get_element_by_id("player-list")
-        .expect("Player list not found")
-        .dyn_into()
-        .expect("Not HtmlElement type")
+    get_element_by_id("player-list")
 }
 
 pub fn games_div() -> HtmlElement {
-    document()
-        .get_element_by_id("game-list")
-        .expect("Game list not found")
-        .dyn_into()
-        .expect("Not HtmlElement type")
+    get_element_by_id("game-list")
 }
 
 pub fn set_interval(f: &Closure<dyn FnMut()>, interval_ms: i32) -> i32 {
@@ -89,4 +81,11 @@ pub fn set_interval(f: &Closure<dyn FnMut()>, interval_ms: i32) -> i32 {
             interval_ms
         )
         .expect("should register `setInterval` OK")
+}
+pub fn get_element_by_id(id: &str) -> HtmlElement {
+    document()
+        .get_element_by_id(id)
+        .expect("Element not found")
+        .dyn_into()
+        .expect("Not HtmlElement type")
 }

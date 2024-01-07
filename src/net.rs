@@ -19,11 +19,10 @@ pub fn start_websocket() -> WebSocket {
         } else if let Ok(blob) = e.data().dyn_into::<web_sys::Blob>() {
             log!("message event, received blob: {:?}", blob);
         } else if let Ok(txt) = e.data().dyn_into::<js_sys::JsString>() {
-            log!("message event, received Text: {:?}", txt);
             let event_result = GameMessageEvent::from_json(txt.as_string().unwrap().as_str());
+
             if event_result.is_ok() {
                 let event = event_result.unwrap();
-                log!("{:?} {:?}", event.event, event.content);
                 match event.event.as_str() {
                     "players" => {
                         update_player_list(event.content.as_str());
@@ -31,7 +30,9 @@ pub fn start_websocket() -> WebSocket {
                     "games" => {
                         update_game_list(event.content.as_str());
                     }
-                    _ => {}
+                    _ => {
+                        log!("{:?} {:?}", event.event, event.content);
+                    }
                 }
             }
         } else {
@@ -124,7 +125,7 @@ fn update_game_list(content: &str) {
         .unwrap();
 
     let list = games_div();
-    list.inner_html().clear();
+    list.set_inner_html("");
 
     for g in game_list {
         let div = document().create_element("div").expect("Unable to create div");
@@ -135,7 +136,7 @@ fn update_game_list(content: &str) {
 
 pub fn send(ws: &WebSocket, event: &str, content: &str) {
     let msg = GameMessageEvent::new(event, content);
-    log!("{:?}", serde_wasm_bindgen::to_value(&msg).expect("Unable to serialize"));
+
     ws.send_with_str(
         JSON::stringify(&serde_wasm_bindgen::to_value(&msg).expect("Unable to serialize"))
             .expect("Unable to stringify")

@@ -4,11 +4,13 @@ mod net;
 mod mouse;
 mod player;
 mod gameinfo;
+mod gameparameters;
 
 use std::{ cell::RefCell, rc::Rc, convert::TryInto };
 
+use gameparameters::GameParameters;
 use net::{ start_websocket, send };
-use utils::{ set_panic_hook, window, set_interval };
+use utils::{ set_panic_hook, window, set_interval, get_element_by_id, Size };
 use wasm_bindgen::prelude::*;
 use web_sys::{ MouseEvent, HtmlCanvasElement, WheelEvent, WebSocket };
 
@@ -36,11 +38,24 @@ pub fn init() {
     let ws = start_websocket();
     let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
     start_menu_update_timer(&ws);
-    register_menu_buttons();
+    register_menu_buttons(&ws);
 }
 
-fn register_menu_buttons() {
-    // TODO
+fn register_menu_buttons(ws: &WebSocket) {
+    let ws_clone = ws.clone();
+    let cb = Closure::wrap(
+        Box::new(move || {
+            send(
+                &ws_clone,
+                "create_game",
+                GameParameters::new(Size::new(10, 10), true, 10, 5).to_json().as_str()
+            );
+        }) as Box<dyn FnMut()>
+    );
+    get_element_by_id("new-game-btn")
+        .add_event_listener_with_callback("click", cb.as_ref().unchecked_ref())
+        .expect("Unable to register event");
+    cb.forget();
 }
 
 fn start_menu_update_timer(ws: &WebSocket) {
