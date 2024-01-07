@@ -1,9 +1,9 @@
 use js_sys::JSON;
 use serde::{ Deserialize, Serialize };
 use wasm_bindgen::{ closure::Closure, JsCast, JsValue };
-use web_sys::{ WebSocket, MessageEvent, ErrorEvent };
+use web_sys::{ WebSocket, MessageEvent, ErrorEvent, HtmlElement };
 
-use crate::log;
+use crate::{ log, player::Player, utils::{ players_div, document, games_div }, gameinfo::GameInfo };
 
 pub fn start_websocket() -> WebSocket {
     let ip = web_sys::window().unwrap().location().hostname().unwrap();
@@ -24,6 +24,15 @@ pub fn start_websocket() -> WebSocket {
             if event_result.is_ok() {
                 let event = event_result.unwrap();
                 log!("{:?} {:?}", event.event, event.content);
+                match event.event.as_str() {
+                    "players" => {
+                        update_player_list(event.content.as_str());
+                    }
+                    "games" => {
+                        update_game_list(event.content.as_str());
+                    }
+                    _ => {}
+                }
             }
         } else {
             log!("message event, received Unknown: {:?}", e.data());
@@ -93,4 +102,45 @@ impl GameMessageEvent {
     pub fn is_empty(&self) -> bool {
         self.event.as_str() == ""
     }
+}
+
+fn update_player_list(content: &str) {
+    let player_list: Vec<Player> = serde_wasm_bindgen
+        ::from_value(JSON::parse(content).unwrap())
+        .unwrap();
+
+    let list: HtmlElement = players_div();
+    list.set_inner_html("");
+
+    for p in player_list {
+        let div = document().create_element("div").expect("Unable to create div");
+        div.set_text_content(Some(format!("{}#{}", p.name, p.id).as_str()));
+        list.append_child(&div).expect("Unable to add player to list");
+    }
+}
+fn update_game_list(content: &str) {
+    let game_list: Vec<GameInfo> = serde_wasm_bindgen
+        ::from_value(JSON::parse(content).unwrap())
+        .unwrap();
+
+    let list = games_div();
+    list.inner_html().clear();
+
+    for g in game_list {
+        let div = document().create_element("div").expect("Unable to create div");
+        div.set_text_content(Some(format!("{} - {} players", g.id, g.player_list.len()).as_str()));
+        list.append_child(&div).expect("Unable to add game to list");
+    }
+}
+
+pub fn send(ws: &WebSocket, event: &str, content: &str) {
+    let msg = GameMessageEvent::new(event, content);
+    log!("{:?}", serde_wasm_bindgen::to_value(&msg).expect("Unable to serialize"));
+    ws.send_with_str(
+        JSON::stringify(&serde_wasm_bindgen::to_value(&msg).expect("Unable to serialize"))
+            .expect("Unable to stringify")
+            .as_string()
+            .expect("Not string")
+            .as_str()
+    ).expect("Unable to send message");
 }

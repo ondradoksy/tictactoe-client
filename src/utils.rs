@@ -1,4 +1,6 @@
 use serde::{ Serialize, Deserialize };
+use wasm_bindgen::{ JsCast, closure::Closure };
+use web_sys::{ HtmlElement, Window, Document };
 
 extern crate web_sys;
 
@@ -43,10 +45,10 @@ pub fn generate_random_u32(min: u32, max: u32) -> u32 {
     (random_usize % (max - min + 1)) + min
 }
 
-pub fn window() -> web_sys::Window {
+pub fn window() -> Window {
     web_sys::window().expect("no global 'window' exists")
 }
-pub fn document() -> web_sys::Document {
+pub fn document() -> Document {
     window().document().expect("should have a document on window")
 }
 
@@ -62,4 +64,29 @@ impl Size {
             y: y,
         }
     }
+}
+
+pub fn players_div() -> HtmlElement {
+    document()
+        .get_element_by_id("player-list")
+        .expect("Player list not found")
+        .dyn_into()
+        .expect("Not HtmlElement type")
+}
+
+pub fn games_div() -> HtmlElement {
+    document()
+        .get_element_by_id("game-list")
+        .expect("Game list not found")
+        .dyn_into()
+        .expect("Not HtmlElement type")
+}
+
+pub fn set_interval(f: &Closure<dyn FnMut()>, interval_ms: i32) -> i32 {
+    window()
+        .set_interval_with_callback_and_timeout_and_arguments_0(
+            f.as_ref().unchecked_ref(),
+            interval_ms
+        )
+        .expect("should register `setInterval` OK")
 }

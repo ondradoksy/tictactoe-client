@@ -12,8 +12,26 @@
       This page contains webassembly and javascript content, please enable
       javascript in your browser.
     </noscript>
-    <div id="gameContainer">
+    <div id="gameContainer" class="hidden">
       <canvas id="game"></canvas>
+    </div>
+    <div id="menu" class="fullscreen">
+      <section>
+        <h1>Game creation</h1>
+        <button>Create game</button>
+      </section>
+      <section>
+        <h1>Games</h1>
+        <div id="game-list">
+
+        </div>
+      </section>
+      <section>
+        <h1>Players</h1>
+        <div id="player-list">
+
+        </div>
+      </section>
     </div>
     <script src="./bootstrap.js"></script>
   </body>

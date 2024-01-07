@@ -6,9 +6,37 @@
 body {
     height: 100vh;
     overflow: hidden;
+    background: #000;
+    color: #eee;
 }
 
 #game, #gameContainer {
     width: 100%;
     height: 100%;
+}
+
+#menu {
+    z-index: 5;
+    background: #333;
+    overflow-y: scroll;
+}
+
+.fullscreen {
+    width: 100vw;
+    height: 100vh;
+}
+
+.hidden {
+    display: none;
+}
+
+.visible {
+    display: block;
+}
+
+section {
+    margin: 1em;
+    padding: 1em;
+    border-radius: 1em;
+    background: #222;
 }

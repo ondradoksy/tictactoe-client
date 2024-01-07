@@ -2,13 +2,15 @@ mod utils;
 pub mod game;
 mod net;
 mod mouse;
+mod player;
+mod gameinfo;
 
 use std::{ cell::RefCell, rc::Rc, convert::TryInto };
 
-use net::start_websocket;
-use utils::{ set_panic_hook, window };
+use net::{ start_websocket, send };
+use utils::{ set_panic_hook, window, set_interval };
 use wasm_bindgen::prelude::*;
-use web_sys::{ MouseEvent, HtmlCanvasElement, WheelEvent };
+use web_sys::{ MouseEvent, HtmlCanvasElement, WheelEvent, WebSocket };
 
 use crate::{ game::Game, utils::document };
 
@@ -33,6 +35,24 @@ pub fn init() {
 
     let ws = start_websocket();
     let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
+    start_menu_update_timer(&ws);
+    register_menu_buttons();
+}
+
+fn register_menu_buttons() {
+    // TODO
+}
+
+fn start_menu_update_timer(ws: &WebSocket) {
+    let ws_clone = ws.clone();
+    let cb = Closure::wrap(
+        Box::new(move || {
+            send(&ws_clone, "players", "");
+            send(&ws_clone, "games", "");
+        }) as Box<dyn FnMut()>
+    );
+    set_interval(&cb, 1000);
+    cb.forget();
 }
 
 fn start_game_render(game: Rc<RefCell<Game>>, canvas: HtmlCanvasElement) {
