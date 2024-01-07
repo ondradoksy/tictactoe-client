@@ -20,19 +20,24 @@ pub fn init() {
     log!("Starting...");
     set_panic_hook();
 
-    let f = Rc::new(RefCell::new(None));
-    let g = f.clone();
-
     let canvas_id = "game";
 
     let canvas = document().get_element_by_id(canvas_id).unwrap();
-    let canvas: web_sys::HtmlCanvasElement = canvas
-        .dyn_into::<web_sys::HtmlCanvasElement>()
-        .unwrap();
+    let canvas: HtmlCanvasElement = canvas.dyn_into::<HtmlCanvasElement>().unwrap();
 
     let game = Rc::new(RefCell::new(Game::new(canvas_id, Some(10), Some(10))));
 
     register_inputs(&game, &canvas);
+
+    start_game_render(game, canvas);
+
+    let ws = start_websocket();
+    let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
+}
+
+fn start_game_render(game: Rc<RefCell<Game>>, canvas: HtmlCanvasElement) {
+    let f = Rc::new(RefCell::new(None));
+    let g = f.clone();
 
     *g.borrow_mut() = Some(
         Closure::new(move || {
@@ -50,9 +55,6 @@ pub fn init() {
     );
 
     request_animation_frame(g.borrow().as_ref().unwrap());
-
-    let ws = start_websocket();
-    let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
 }
 
 fn request_animation_frame(f: &Closure<dyn FnMut()>) {

@@ -315,6 +315,16 @@ impl Game {
         );
 
         self.gl.uniform1i(Some(&sampler_location), 0);
+        self.gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MAG_FILTER,
+            WebGl2RenderingContext::NEAREST as i32
+        );
+        self.gl.tex_parameteri(
+            WebGl2RenderingContext::TEXTURE_2D,
+            WebGl2RenderingContext::TEXTURE_MIN_FILTER,
+            WebGl2RenderingContext::LINEAR as i32
+        );
         self.gl.generate_mipmap(WebGl2RenderingContext::TEXTURE_2D);
 
         self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
@@ -713,13 +723,14 @@ impl Game {
         result
     }
     fn get_texture_pos(&self, x: i32, y: i32) -> [f32; 8] {
+        let padding = 0.01;
         let index = self.texture_indices[(y * self.grid_size.x + x) as usize] as f32;
         let size = (self.image.height() as f32) / (self.image.width() as f32);
 
-        let left = index * size;
-        let right = index * size + size;
-        let top = 0.0;
-        let bottom = 1.0;
+        let left = index * size + padding;
+        let right = index * size + size - padding;
+        let top = 0.0 + padding;
+        let bottom = 1.0 - padding;
 
         [right, top, left, top, left, bottom, right, bottom]
     }
