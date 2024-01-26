@@ -1,12 +1,15 @@
 use wasm_bindgen::prelude::*;
-use web_sys::{ HtmlCanvasElement, WebGlBuffer, MouseEvent, WheelEvent };
+use web_sys::{ HtmlCanvasElement, WebGlBuffer, MouseEvent, WheelEvent, WebSocket };
 use web_sys::{ HtmlImageElement, WebGl2RenderingContext, WebGlShader, WebGlProgram };
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
 use webgl_matrix::{ Matrix, ProjectionMatrix, Mat4, MulVectorMatrix };
+use crate::grid::Grid;
 use crate::mouse::{ MouseTracker, FloatPos };
+use crate::net::send;
+use crate::playermove::PlayerMove;
 use crate::utils::{ now, generate_random_u32, Size };
 pub use crate::log;
 
@@ -16,7 +19,7 @@ pub struct Game {
     shader_program: WebGlProgram,
     tile_scale: f32,
     aspect_ratio: f32,
-    grid_size: Size,
+    grid: Grid,
     image: HtmlImageElement,
     view_matrix: Mat4,
     projection_matrix: Mat4,
@@ -28,7 +31,7 @@ pub struct Game {
     mouse_tracker: MouseTracker,
 }
 impl Game {
-    pub fn new(canvas_id: &str, width: Option<i32>, height: Option<i32>) -> Game {
+    pub fn new(canvas_id: &str, grid: Grid) -> Game {
         let document = web_sys::window().unwrap().document().unwrap();
         let canvas = document.get_element_by_id(canvas_id).unwrap();
         let canvas: web_sys::HtmlCanvasElement = canvas
@@ -47,7 +50,7 @@ impl Game {
             shader_program: shader_program,
             tile_scale: 0.8,
             aspect_ratio: 1.0,
-            grid_size: Size::new(width.unwrap_or(10), height.unwrap_or(10)),
+            grid: grid,
             image: image,
             view_matrix: Mat4::identity(),
             projection_matrix: Mat4::create_perspective(PI / 2.0, 1.0, 0.1, 100.0),
@@ -116,12 +119,12 @@ impl Game {
     }
 
     fn init_texture_indices(&mut self) {
-        self.texture_indices = Vec::with_capacity((self.grid_size.x * self.grid_size.y) as usize);
+        self.texture_indices = Vec::with_capacity((self.grid.size.x * self.grid.size.y) as usize);
 
         // Y
-        for _i in 0..self.grid_size.y {
+        for _i in 0..self.grid.size.y {
             // X
-            for _j in 0..self.grid_size.x {
+            for _j in 0..self.grid.size.x {
                 self.texture_indices.push(generate_random_u32(0, 3) as usize);
             }
         }
@@ -414,27 +417,27 @@ impl Game {
 
     pub fn draw_grid(&mut self) {
         let mut vertices: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.x * self.grid_size.y * 4 * 3) as usize
+            (self.grid.size.x * self.grid.size.y * 4 * 3) as usize
         );
         let mut colors: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.x * self.grid_size.y * 4 * 4) as usize
+            (self.grid.size.x * self.grid.size.y * 4 * 4) as usize
         );
         let mut indices: Vec<u16> = Vec::with_capacity(
-            (self.grid_size.x * self.grid_size.y * 6) as usize
+            (self.grid.size.x * self.grid.size.y * 6) as usize
         );
 
-        let width: f32 = i32::try_from(self.grid_size.x).unwrap() as f32;
-        let height: f32 = i32::try_from(self.grid_size.y).unwrap() as f32;
+        let width: f32 = i32::try_from(self.grid.size.x).unwrap() as f32;
+        let height: f32 = i32::try_from(self.grid.size.y).unwrap() as f32;
 
         let tile_width: f32 = 1.0 / width;
         let tile_height: f32 = 1.0 / height;
 
         let mut texture_coords: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.x * self.grid_size.y * 6 * 2) as usize
+            (self.grid.size.x * self.grid.size.y * 6 * 2) as usize
         );
 
         let mut models: Vec<f32> = Vec::with_capacity(
-            (self.grid_size.x * self.grid_size.y * 16) as usize
+            (self.grid.size.x * self.grid.size.y * 16) as usize
         );
 
         self.projection_matrix = Mat4::create_perspective(PI / 2.0, self.aspect_ratio, 0.1, 100.0);
@@ -493,19 +496,19 @@ impl Game {
             texture_coords.push(0.0);
         }
 
-        let scale = if self.grid_size.x > self.grid_size.y {
-            1.0 / (self.grid_size.x as f32)
+        let scale = if self.grid.size.x > self.grid.size.y {
+            1.0 / (self.grid.size.x as f32)
         } else {
-            1.0 / (self.grid_size.y as f32)
+            1.0 / (self.grid.size.y as f32)
         };
         let tile_size = if tile_width > tile_height { tile_height } else { tile_width };
 
         self.hover_tile = None;
 
         // Y
-        for i in 0..self.grid_size.y {
+        for i in 0..self.grid.size.y {
             // X
-            for j in 0..self.grid_size.x {
+            for j in 0..self.grid.size.x {
                 let origin_x = Game::convert_x_to_screen((j as f32) * tile_size + tile_size / 2.0);
                 let origin_y = Game::convert_y_to_screen((i as f32) * tile_size + tile_size / 2.0);
 
@@ -724,7 +727,8 @@ impl Game {
     }
     fn get_texture_pos(&self, x: i32, y: i32) -> [f32; 8] {
         let padding = 0.01;
-        let index = self.texture_indices[(y * self.grid_size.x + x) as usize] as f32;
+        let index_option = self.grid.get_pos(&Size::new(x, y));
+        let index = (if index_option.is_some() { index_option.unwrap() + 1 } else { 0 }) as f32; // .texture_indices[(y * self.grid.size.x + x) as usize]
         let size = (self.image.height() as f32) / (self.image.width() as f32);
 
         let left = index * size + padding;
@@ -794,7 +798,7 @@ impl Game {
         e.prevent_default();
         e.stop_propagation();
     }
-    pub fn on_mouse_up(&mut self, e: MouseEvent) {
+    pub fn on_mouse_up(&mut self, e: MouseEvent, ws: &WebSocket) {
         log!("mouseup {:?}", e.button());
         self.update_mouse_pos(&e);
         match e.button() {
@@ -806,6 +810,10 @@ impl Game {
                 if self.mouse_tracker.get_time_held(0).unwrap() < 1000.0 && diff.abs().max() < 0.1 {
                     // Click
                     log!("Clicked on {:?}", self.hover_tile);
+                    if self.hover_tile.is_some() {
+                        send(ws, "move", self.hover_tile.unwrap().to_json().as_str());
+                        log!("Sent");
+                    }
                 }
                 self.mouse_tracker.set_up(0);
             }
@@ -842,6 +850,10 @@ impl Game {
                 (e.client_y() as f32) / (self.gl.drawing_buffer_height() as f32)
             )
         );
+    }
+    pub fn add_move(&mut self, m: PlayerMove) {
+        self.grid.add(m);
+        self.init_texture_indices();
     }
 }
 

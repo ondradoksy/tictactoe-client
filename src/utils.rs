@@ -1,5 +1,6 @@
+use js_sys::JSON;
 use serde::{ Serialize, Deserialize };
-use wasm_bindgen::{ JsCast, closure::Closure };
+use wasm_bindgen::{ JsCast, closure::Closure, JsValue };
 use web_sys::{ HtmlElement, Window, Document, Event, Element };
 
 extern crate web_sys;
@@ -9,6 +10,18 @@ extern crate web_sys;
 macro_rules! log {
     ($($t:tt)*) => {
         web_sys::console::log_1(&format!( $( $t )* ).into())
+    };
+}
+#[macro_export]
+macro_rules! warn {
+    ($($t:tt)*) => {
+        web_sys::console::warn_1(&format!( $( $t )* ).into())
+    };
+}
+#[macro_export]
+macro_rules! error {
+    ($($t:tt)*) => {
+        web_sys::console::error_1(&format!( $( $t )* ).into())
     };
 }
 
@@ -52,7 +65,7 @@ pub fn document() -> Document {
     window().document().expect("should have a document on window")
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub struct Size {
     pub x: i32,
     pub y: i32,
@@ -63,6 +76,22 @@ impl Size {
             x: x,
             y: y,
         }
+    }
+    pub fn to_json(&self) -> String {
+        (*self).into()
+    }
+}
+impl From<Size> for String {
+    fn from(value: Size) -> Self {
+        serde_wasm_bindgen
+            ::from_value(
+                JSON::stringify(
+                    &serde_wasm_bindgen::to_value(&value).expect("Could not convert to JsValue")
+                )
+                    .expect("Could not stringify")
+                    .into()
+            )
+            .expect("Could not convert from JsValue")
     }
 }
 
@@ -96,4 +125,24 @@ pub fn add_event_listener(element: &Element, event: &str, f: impl Fn(Event) + 's
         .add_event_listener_with_callback(event, &cb.as_ref().unchecked_ref())
         .expect("Something went wrong");
     cb.forget();
+}
+
+pub fn from_jsvalue<T>(value: JsValue) -> Result<T, String> where T: serde::de::DeserializeOwned {
+    let result: Result<T, serde_wasm_bindgen::Error> = serde_wasm_bindgen::from_value(value);
+    if result.is_ok() {
+        return Ok(result.unwrap());
+    }
+    let err_string = result.err().unwrap().to_string();
+    Err(err_string)
+}
+
+pub fn from_json<T>(text: &str) -> Result<T, String> where T: serde::de::DeserializeOwned {
+    let result: Result<T, serde_wasm_bindgen::Error> = serde_wasm_bindgen::from_value(
+        JSON::parse(text).expect("Unable to parse")
+    );
+    if result.is_ok() {
+        return Ok(result.unwrap());
+    }
+    let err_string = result.err().unwrap().to_string();
+    Err(err_string)
 }

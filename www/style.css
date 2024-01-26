@@ -10,12 +10,12 @@ body {
     color: #eee;
 }
 
-#game, #gameContainer {
+#game, #game-container {
     width: 100%;
     height: 100%;
 }
 
-#menu {
+#menu, #lobby {
     z-index: 5;
     background: #333;
     overflow-y: scroll;

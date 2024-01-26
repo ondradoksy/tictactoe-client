@@ -1,3 +1,5 @@
+use std::{ ops::Add, rc::Rc, cell::RefCell };
+
 use js_sys::JSON;
 use serde::{ Deserialize, Serialize };
 use wasm_bindgen::{ closure::Closure, JsCast, JsValue };
@@ -6,17 +8,39 @@ use web_sys::{ WebSocket, MessageEvent, ErrorEvent, HtmlElement, Event };
 use crate::{
     log,
     player::Player,
-    utils::{ players_div, document, games_div, add_event_listener },
+    utils::{
+        players_div,
+        document,
+        games_div,
+        add_event_listener,
+        from_jsvalue,
+        get_element_by_id,
+    },
     gameinfo::GameInfo,
+    gamemessageevent::GameMessageEvent,
+    warn,
+    gamejoindata::GameJoinData,
+    error,
+    grid::Grid,
+    game::Game,
+    playermove::PlayerMove,
 };
 
-pub fn start_websocket() -> WebSocket {
+pub(crate) fn start_websocket(
+    current_game: &Rc<RefCell<Option<GameInfo>>>,
+    game: &Rc<RefCell<Option<Game>>>
+) -> WebSocket {
     let ip = web_sys::window().unwrap().location().hostname().unwrap();
     let ws = WebSocket::new(format!("ws://{}:9001/", ip).as_str()).unwrap();
 
     log!("Connecting to {}", format!("wss://{}:9001/", ip));
 
     ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+
+    let current_game_clone = current_game.clone();
+
+    let mut game_list: Rc<RefCell<Vec<GameInfo>>> = Rc::new(RefCell::new(Vec::new()));
+    let game_clone = game.clone();
 
     let ws_clone = ws.clone();
     let onmessage_callback = Closure::<dyn FnMut(_)>::new(move |e: MessageEvent| {
@@ -35,10 +59,21 @@ pub fn start_websocket() -> WebSocket {
                         update_player_list(event.content.as_str());
                     }
                     "games" => {
-                        update_game_list(event.content.as_str(), &ws_clone);
+                        update_game_list(event.content.as_str(), &ws_clone, &mut game_list);
+                    }
+                    "joined_game" => {
+                        joined_game(
+                            event.content.as_str(),
+                            &mut current_game_clone.borrow_mut(),
+                            &game_list
+                        );
+                    }
+                    "new_move" => { new_move(event.content.as_str(), &mut game_clone.borrow_mut()) }
+                    "current_state" => {
+                        start_game(event.content.as_str(), &mut game_clone.borrow_mut());
                     }
                     _ => {
-                        log!("{:?} {:?}", event.event, event.content);
+                        warn!("Unrecognized event: {:?} {:?}", event.event, event.content);
                     }
                 }
             }
@@ -70,48 +105,6 @@ pub fn start_websocket() -> WebSocket {
     ws
 }
 
-pub fn from_jsvalue<T>(value: JsValue) -> Result<T, String> where T: serde::de::DeserializeOwned {
-    let result: Result<T, serde_wasm_bindgen::Error> = serde_wasm_bindgen::from_value(value);
-    if result.is_ok() {
-        return Ok(result.unwrap());
-    }
-    let err_string = result.err().unwrap().to_string();
-    Err(err_string)
-}
-
-#[derive(Deserialize, Serialize, Clone)]
-pub(crate) struct GameMessageEvent {
-    pub event: String,
-    pub content: String,
-}
-impl GameMessageEvent {
-    pub fn new(event: impl Into<String>, content: impl Into<String>) -> Self {
-        Self {
-            event: event.into(),
-            content: content.into(),
-        }
-    }
-    pub fn new_empty() -> Self {
-        Self {
-            event: String::from(""),
-            content: String::from(""),
-        }
-    }
-    pub fn from_json(text: &str) -> Result<Self, String> {
-        let result = JSON::parse(text);
-        if result.is_err() {
-            return Err(result.err().unwrap().as_string().unwrap());
-        }
-        Self::from_jsvalue(result.unwrap())
-    }
-    pub fn from_jsvalue(value: JsValue) -> Result<Self, String> {
-        from_jsvalue(value)
-    }
-    pub fn is_empty(&self) -> bool {
-        self.event.as_str() == ""
-    }
-}
-
 fn update_player_list(content: &str) {
     let player_list: Vec<Player> = serde_wasm_bindgen
         ::from_value(JSON::parse(content).unwrap())
@@ -126,15 +119,20 @@ fn update_player_list(content: &str) {
         list.append_child(&div).expect("Unable to add player to list");
     }
 }
-fn update_game_list(content: &str, ws: &WebSocket) {
-    let game_list: Vec<GameInfo> = serde_wasm_bindgen
+fn update_game_list(content: &str, ws: &WebSocket, game_list: &Rc<RefCell<Vec<GameInfo>>>) {
+    let games: Vec<GameInfo> = serde_wasm_bindgen
         ::from_value(JSON::parse(content).unwrap())
         .unwrap();
+    *game_list.borrow_mut() = games;
 
     let list = games_div();
     list.set_inner_html("");
 
-    for g in game_list {
+    let game_list_clone = game_list.clone();
+
+    for i in 0..game_list.borrow().len() {
+        let game_list_borrow = game_list_clone.borrow();
+        let g = game_list_borrow[i].clone();
         let div = document().create_element("div").expect("Unable to create div");
         div.set_text_content(Some(format!("{} - {} players", g.id, g.player_list.len()).as_str()));
 
@@ -147,14 +145,62 @@ fn update_game_list(content: &str, ws: &WebSocket) {
     }
 }
 
+fn joined_game(
+    content: &str,
+    current_game: &mut Option<GameInfo>,
+    game_list: &Rc<RefCell<Vec<GameInfo>>>
+) {
+    let data_result = GameJoinData::from_json(&content);
+    if data_result.is_err() {
+        error!("Unable to parse game join data info, either client or server may be out of date.");
+        return;
+    }
+    let data = data_result.unwrap();
+    log!("Joined game: {}", data.id);
+
+    let menu = get_element_by_id("menu");
+    let lobby = get_element_by_id("lobby");
+
+    menu.set_class_name(menu.class_name().add(" hidden").as_str());
+    lobby.set_class_name("fullscreen");
+
+    let index = game_list
+        .borrow()
+        .iter()
+        .position(|p| { p.id == data.id })
+        .unwrap();
+
+    *current_game = Some(game_list.borrow()[index].clone());
+}
+
+fn start_game(content: &str, game: &mut Option<Game>) {
+    let grid_result = Grid::from_json(content);
+    if grid_result.is_err() {
+        error!("{}", grid_result.err().unwrap());
+        return;
+    }
+    let grid = grid_result.unwrap();
+    log!("{:?}", grid);
+
+    *game = Some(Game::new("game", grid));
+    let lobby = get_element_by_id("lobby");
+    lobby.set_class_name(lobby.class_name().add(" hidden").as_str());
+
+    let game_container = get_element_by_id("game-container");
+    game_container.set_class_name("");
+}
+
+fn new_move(content: &str, game: &mut Option<Game>) {
+    if game.is_none() {
+        return;
+    }
+
+    let m = PlayerMove::from_json(content).expect("Unable to parse JSON");
+    game.as_mut().unwrap().add_move(m);
+}
+
 pub fn send(ws: &WebSocket, event: &str, content: &str) {
     let msg = GameMessageEvent::new(event, content);
 
-    ws.send_with_str(
-        JSON::stringify(&serde_wasm_bindgen::to_value(&msg).expect("Unable to serialize"))
-            .expect("Unable to stringify")
-            .as_string()
-            .expect("Not string")
-            .as_str()
-    ).expect("Unable to send message");
+    ws.send_with_str(msg.to_string().as_str()).expect("Unable to send message");
 }

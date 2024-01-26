@@ -5,6 +5,10 @@ mod mouse;
 mod player;
 mod gameinfo;
 mod gameparameters;
+mod gamejoindata;
+mod gamemessageevent;
+mod grid;
+mod playermove;
 
 use std::{ cell::RefCell, rc::Rc, convert::TryInto };
 
@@ -14,7 +18,7 @@ use utils::{ set_panic_hook, window, set_interval, get_element_by_id, Size };
 use wasm_bindgen::prelude::*;
 use web_sys::{ MouseEvent, HtmlCanvasElement, WheelEvent, WebSocket };
 
-use crate::{ game::Game, utils::document };
+use crate::{ game::Game, utils::document, gameinfo::GameInfo };
 
 extern crate js_sys;
 extern crate web_sys;
@@ -29,16 +33,33 @@ pub fn init() {
     let canvas = document().get_element_by_id(canvas_id).unwrap();
     let canvas: HtmlCanvasElement = canvas.dyn_into::<HtmlCanvasElement>().unwrap();
 
-    let game = Rc::new(RefCell::new(Game::new(canvas_id, Some(10), Some(10))));
+    let current_game: Rc<RefCell<Option<GameInfo>>> = Rc::new(RefCell::new(None));
 
-    register_inputs(&game, &canvas);
+    let game: Rc<RefCell<Option<Game>>> = Rc::new(RefCell::new(None));
 
-    start_game_render(game, canvas);
-
-    let ws = start_websocket();
+    let ws = start_websocket(&current_game, &game);
     let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
+
+    register_inputs(&game, &canvas, &ws);
+
+    start_game_render(&game, &canvas);
+
     start_menu_update_timer(&ws);
     register_menu_buttons(&ws);
+    register_lobby_buttons(&ws);
+}
+
+fn register_lobby_buttons(ws: &WebSocket) {
+    let ws_clone = ws.clone();
+    let cb = Closure::wrap(
+        Box::new(move || {
+            send(&ws_clone, "ready", "");
+        }) as Box<dyn FnMut()>
+    );
+    get_element_by_id("ready-btn")
+        .add_event_listener_with_callback("click", cb.as_ref().unchecked_ref())
+        .expect("Unable to register event");
+    cb.forget();
 }
 
 fn register_menu_buttons(ws: &WebSocket) {
@@ -70,20 +91,26 @@ fn start_menu_update_timer(ws: &WebSocket) {
     cb.forget();
 }
 
-fn start_game_render(game: Rc<RefCell<Game>>, canvas: HtmlCanvasElement) {
+fn start_game_render(game: &Rc<RefCell<Option<Game>>>, canvas: &HtmlCanvasElement) {
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
+
+    let game_clone = game.clone();
+    let canvas_clone = canvas.clone();
 
     *g.borrow_mut() = Some(
         Closure::new(move || {
             if
-                canvas.width() != canvas.client_width().try_into().unwrap() ||
-                canvas.height() != canvas.client_height().try_into().unwrap()
+                canvas_clone.width() != canvas_clone.client_width().try_into().unwrap() ||
+                canvas_clone.height() != canvas_clone.client_height().try_into().unwrap()
             {
-                canvas.set_width(canvas.client_width().try_into().unwrap());
-                canvas.set_height(canvas.client_height().try_into().unwrap());
+                canvas_clone.set_width(canvas_clone.client_width().try_into().unwrap());
+                canvas_clone.set_height(canvas_clone.client_height().try_into().unwrap());
             }
-            game.borrow_mut().render();
+            let mut game_borrowed = game_clone.borrow_mut();
+            if game_borrowed.is_some() {
+                game_borrowed.as_mut().unwrap().render();
+            }
 
             request_animation_frame(f.borrow().as_ref().unwrap());
         })
@@ -98,12 +125,18 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
-fn register_inputs(game: &Rc<RefCell<Game>>, canvas: &HtmlCanvasElement) {
+fn register_inputs(game: &Rc<RefCell<Option<Game>>>, canvas: &HtmlCanvasElement, ws: &WebSocket) {
+    let ws_clone = ws.clone();
+
     // Mouse move
     let game_clone = game.clone();
     let cb = Closure::wrap(
         Box::new(move |e: MouseEvent| {
-            game_clone.borrow_mut().on_mouse_move(e);
+            let mut game_borrowed = game_clone.borrow_mut();
+            if game_borrowed.is_none() {
+                return;
+            }
+            game_borrowed.as_mut().unwrap().on_mouse_move(e);
         }) as Box<dyn FnMut(_)>
     );
     canvas
@@ -115,7 +148,11 @@ fn register_inputs(game: &Rc<RefCell<Game>>, canvas: &HtmlCanvasElement) {
     let game_clone = game.clone();
     let cb = Closure::wrap(
         Box::new(move |e: MouseEvent| {
-            game_clone.borrow_mut().on_mouse_down(e);
+            let mut game_borrowed = game_clone.borrow_mut();
+            if game_borrowed.is_none() {
+                return;
+            }
+            game_borrowed.as_mut().unwrap().on_mouse_down(e);
         }) as Box<dyn FnMut(_)>
     );
     canvas
@@ -127,7 +164,11 @@ fn register_inputs(game: &Rc<RefCell<Game>>, canvas: &HtmlCanvasElement) {
     let game_clone = game.clone();
     let cb = Closure::wrap(
         Box::new(move |e: MouseEvent| {
-            game_clone.borrow_mut().on_mouse_up(e);
+            let mut game_borrowed = game_clone.borrow_mut();
+            if game_borrowed.is_none() {
+                return;
+            }
+            game_borrowed.as_mut().unwrap().on_mouse_up(e, &ws_clone);
         }) as Box<dyn FnMut(_)>
     );
     canvas
@@ -139,7 +180,11 @@ fn register_inputs(game: &Rc<RefCell<Game>>, canvas: &HtmlCanvasElement) {
     let game_clone = game.clone();
     let cb = Closure::wrap(
         Box::new(move |e: WheelEvent| {
-            game_clone.borrow_mut().on_scroll(e);
+            let mut game_borrowed = game_clone.borrow_mut();
+            if game_borrowed.is_none() {
+                return;
+            }
+            game_borrowed.as_mut().unwrap().on_scroll(e);
         }) as Box<dyn FnMut(_)>
     );
     canvas
