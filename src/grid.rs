@@ -23,10 +23,14 @@ impl Grid {
         self.moves.push(m);
     }
     fn get_index(&self, pos: &Size) -> Option<usize> {
-        self.moves
+        let index = self.moves
             .iter()
             .rev()
-            .position(|m| m.position == *pos)
+            .position(|m| m.position == *pos);
+        if index.is_none() {
+            return None;
+        }
+        Some(self.moves.len() - index.unwrap() - 1)
     }
     pub fn is_empty(&self, pos: &Size) -> bool {
         self.get_pos(pos).is_none()
