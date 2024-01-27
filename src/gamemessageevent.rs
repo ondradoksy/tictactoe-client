@@ -16,12 +16,6 @@ impl GameMessageEvent {
             content: content.into(),
         }
     }
-    pub fn new_empty() -> Self {
-        Self {
-            event: String::from(""),
-            content: String::from(""),
-        }
-    }
     pub fn from_json(text: &str) -> Result<Self, String> {
         let result = JSON::parse(text);
         if result.is_err() {
@@ -31,9 +25,6 @@ impl GameMessageEvent {
     }
     pub fn from_jsvalue(value: JsValue) -> Result<Self, String> {
         from_jsvalue(value)
-    }
-    pub fn is_empty(&self) -> bool {
-        self.event.as_str() == ""
     }
     pub fn to_string(&self) -> String {
         (*self).clone().into()

@@ -14,7 +14,7 @@ use std::{ cell::RefCell, rc::Rc, convert::TryInto };
 
 use gameparameters::GameParameters;
 use net::{ start_websocket, send };
-use utils::{ set_panic_hook, window, set_interval, get_element_by_id, Size };
+use utils::{ set_panic_hook, window, get_element_by_id, Size };
 use wasm_bindgen::prelude::*;
 use web_sys::{ MouseEvent, HtmlCanvasElement, WheelEvent, WebSocket };
 
@@ -87,18 +87,6 @@ fn update_menu(ws: &WebSocket) {
     send(&ws, "players", "");
     log!("Fetching games");
     send(&ws, "games", "");
-}
-
-fn start_menu_update_timer(ws: &WebSocket) {
-    let ws_clone = ws.clone();
-    let cb = Closure::wrap(
-        Box::new(move || {
-            send(&ws_clone, "players", "");
-            send(&ws_clone, "games", "");
-        }) as Box<dyn FnMut()>
-    );
-    set_interval(&cb, 1000);
-    cb.forget();
 }
 
 fn start_game_render(game: &Rc<RefCell<Option<Game>>>, canvas: &HtmlCanvasElement) {

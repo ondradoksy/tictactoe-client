@@ -10,7 +10,7 @@ use crate::grid::Grid;
 use crate::mouse::{ MouseTracker, FloatPos };
 use crate::net::send;
 use crate::playermove::PlayerMove;
-use crate::utils::{ now, generate_random_u32, Size };
+use crate::utils::{ now, Size };
 pub use crate::log;
 
 pub struct Game {

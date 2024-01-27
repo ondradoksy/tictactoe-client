@@ -3,7 +3,7 @@ use serde::{ Deserialize, Serialize };
 
 use crate::utils::from_json;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone, Copy)]
 pub(crate) struct GameJoinData {
     pub id: u32,
 }
@@ -16,6 +16,9 @@ impl GameJoinData {
     pub fn from_json(text: &str) -> Result<Self, String> {
         from_json(text)
     }
+    pub fn to_string(&self) -> String {
+        (*self).into()
+    }
 }
 impl From<GameJoinData> for String {
     fn from(value: GameJoinData) -> Self {
@@ -24,9 +27,4 @@ impl From<GameJoinData> for String {
             .as_string()
             .expect("Not string")
     }
-}
-
-#[test]
-fn game_join_data_test() {
-    assert!(true);
 }
