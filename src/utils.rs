@@ -103,6 +103,15 @@ pub fn games_div() -> HtmlElement {
     get_element_by_id("game-list")
 }
 
+pub fn set_timeout(f: &Closure<dyn FnMut()>, interval_ms: i32) -> i32 {
+    window()
+        .set_timeout_with_callback_and_timeout_and_arguments_0(
+            f.as_ref().unchecked_ref(),
+            interval_ms
+        )
+        .expect("should register `setTimeout` OK")
+}
+
 pub fn set_interval(f: &Closure<dyn FnMut()>, interval_ms: i32) -> i32 {
     window()
         .set_interval_with_callback_and_timeout_and_arguments_0(

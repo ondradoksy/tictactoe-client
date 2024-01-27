@@ -120,12 +120,18 @@ impl Game {
 
     fn init_texture_indices(&mut self) {
         self.texture_indices = Vec::with_capacity((self.grid.size.x * self.grid.size.y) as usize);
+        log!("{:?}", self.grid);
 
         // Y
-        for _i in 0..self.grid.size.y {
+        for i in 0..self.grid.size.y {
             // X
-            for _j in 0..self.grid.size.x {
-                self.texture_indices.push(generate_random_u32(0, 3) as usize);
+            for j in 0..self.grid.size.x {
+                let index = self.grid.get_pos(&Size::new(j, i));
+                if index.is_some() {
+                    self.texture_indices.push((index.unwrap() + 1) as usize);
+                } else {
+                    self.texture_indices.push(0);
+                }
             }
         }
         log!("{:?}", self.texture_indices);

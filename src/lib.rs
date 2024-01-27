@@ -38,13 +38,16 @@ pub fn init() {
     let game: Rc<RefCell<Option<Game>>> = Rc::new(RefCell::new(None));
 
     let ws = start_websocket(&current_game, &game);
-    let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
+    //let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
+    update_menu(&ws); // Initial menu update
 
     register_inputs(&game, &canvas, &ws);
 
     start_game_render(&game, &canvas);
 
-    start_menu_update_timer(&ws);
+    //Menu should be automatically updated by server on change
+    //start_menu_update_timer(&ws);
+
     register_menu_buttons(&ws);
     register_lobby_buttons(&ws);
 }
@@ -77,6 +80,13 @@ fn register_menu_buttons(ws: &WebSocket) {
         .add_event_listener_with_callback("click", cb.as_ref().unchecked_ref())
         .expect("Unable to register event");
     cb.forget();
+}
+
+fn update_menu(ws: &WebSocket) {
+    log!("Fetching players");
+    send(&ws, "players", "");
+    log!("Fetching games");
+    send(&ws, "games", "");
 }
 
 fn start_menu_update_timer(ws: &WebSocket) {

@@ -9,12 +9,14 @@ use crate::{
     log,
     player::Player,
     utils::{
-        players_div,
-        document,
-        games_div,
         add_event_listener,
+        document,
         from_jsvalue,
+        games_div,
         get_element_by_id,
+        players_div,
+        set_interval,
+        set_timeout,
     },
     gameinfo::GameInfo,
     gamemessageevent::GameMessageEvent,
@@ -202,5 +204,19 @@ fn new_move(content: &str, game: &mut Option<Game>) {
 pub fn send(ws: &WebSocket, event: &str, content: &str) {
     let msg = GameMessageEvent::new(event, content);
 
-    ws.send_with_str(msg.to_string().as_str()).expect("Unable to send message");
+    // Check if websocket is open
+    if ws.ready_state() != 1 {
+        // Wait for websocket to be open
+        let ws_clone = ws.clone();
+        let cb = Closure::wrap(
+            Box::new(move || {
+                send(&ws_clone, msg.event.as_str(), msg.content.as_str());
+            }) as Box<dyn FnMut()>
+        );
+        set_timeout(&cb, 1000);
+        cb.forget();
+        return;
+    }
+    let text = msg.to_string();
+    ws.send_with_str(text.as_str()).expect("Unable to send message");
 }
