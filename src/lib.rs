@@ -9,6 +9,7 @@ mod gamejoindata;
 mod gamemessageevent;
 mod grid;
 mod playermove;
+mod playerimageresponse;
 
 use std::{ cell::RefCell, rc::Rc, convert::TryInto };
 
@@ -18,7 +19,7 @@ use utils::{ set_panic_hook, window, get_element_by_id, Size };
 use wasm_bindgen::prelude::*;
 use web_sys::{ MouseEvent, HtmlCanvasElement, WheelEvent, WebSocket };
 
-use crate::{ game::Game, utils::document, gameinfo::GameInfo };
+use crate::{ game::Game, gameinfo::GameInfo, player::Player, utils::document };
 
 extern crate js_sys;
 extern crate web_sys;
@@ -37,7 +38,9 @@ pub fn init() {
 
     let game: Rc<RefCell<Option<Game>>> = Rc::new(RefCell::new(None));
 
-    let ws = start_websocket(&current_game, &game);
+    let players: Rc<RefCell<Vec<Player>>> = Rc::new(RefCell::new(Vec::new()));
+
+    let ws = start_websocket(&current_game, &game, &players);
     //let _ = ws.send_with_str("{\"event\":\"players\",\"content\":\"\"}");
     update_menu(&ws); // Initial menu update
 

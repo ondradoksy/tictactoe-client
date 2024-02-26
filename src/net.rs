@@ -13,7 +13,8 @@ use crate::{
     gamemessageevent::GameMessageEvent,
     grid::Grid,
     log,
-    player::Player,
+    player::{ merge_players, set_image, Player },
+    playerimageresponse::PlayerImageResponse,
     playermove::PlayerMove,
     utils::{ add_event_listener, document, games_div, get_element_by_id, players_div, set_timeout },
     warn,
@@ -21,7 +22,8 @@ use crate::{
 
 pub(crate) fn start_websocket(
     current_game: &Rc<RefCell<Option<GameInfo>>>,
-    game: &Rc<RefCell<Option<Game>>>
+    game: &Rc<RefCell<Option<Game>>>,
+    players: &Rc<RefCell<Vec<Player>>>
 ) -> WebSocket {
     let ip = web_sys::window().unwrap().location().hostname().unwrap();
     let ws = WebSocket::new(format!("ws://{}:9001/", ip).as_str()).unwrap();
@@ -34,6 +36,7 @@ pub(crate) fn start_websocket(
 
     let mut game_list: Rc<RefCell<Vec<GameInfo>>> = Rc::new(RefCell::new(Vec::new()));
     let game_clone = game.clone();
+    let players_clone = players.clone();
 
     let ws_clone = ws.clone();
     let onmessage_callback = Closure::<dyn FnMut(_)>::new(move |e: MessageEvent| {
@@ -49,7 +52,7 @@ pub(crate) fn start_websocket(
                 let event = event_result.unwrap();
                 match event.event.as_str() {
                     "players" => {
-                        update_player_list(event.content.as_str());
+                        update_player_list(&mut players_clone.borrow_mut(), event.content.as_str());
                     }
                     "games" => {
                         update_game_list(event.content.as_str(), &ws_clone, &mut game_list);
@@ -64,6 +67,12 @@ pub(crate) fn start_websocket(
                     "new_move" => { new_move(event.content.as_str(), &mut game_clone.borrow_mut()) }
                     "current_state" => {
                         start_game(event.content.as_str(), &mut game_clone.borrow_mut());
+                    }
+                    "player_image" => {
+                        update_player_image(
+                            &mut players_clone.borrow_mut(),
+                            event.content.as_str()
+                        );
                     }
                     _ => {
                         warn!("Unrecognized event: {:?} {:?}", event.event, event.content);
@@ -98,10 +107,22 @@ pub(crate) fn start_websocket(
     ws
 }
 
-fn update_player_list(content: &str) {
+fn update_player_image(players: &mut Vec<Player>, content: &str) {
+    let result = PlayerImageResponse::from_json(content);
+    if result.is_err() {
+        error!("{:?}", result.err());
+        return;
+    }
+
+    set_image(players, result.unwrap());
+}
+
+fn update_player_list(players: &mut Vec<Player>, content: &str) {
     let player_list: Vec<Player> = serde_wasm_bindgen
         ::from_value(JSON::parse(content).unwrap())
         .unwrap();
+
+    merge_players(players, &player_list);
 
     let list: HtmlElement = players_div();
     list.set_inner_html("");
