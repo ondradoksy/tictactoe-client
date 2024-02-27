@@ -1,14 +1,17 @@
 use wasm_bindgen::prelude::*;
 use web_sys::{ HtmlCanvasElement, WebGlBuffer, MouseEvent, WheelEvent, WebSocket };
 use web_sys::{ HtmlImageElement, WebGl2RenderingContext, WebGlShader, WebGlProgram };
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::convert::TryFrom;
 use std::f32::consts::PI;
+use std::rc::Rc;
 use webgl_matrix::{ Matrix, ProjectionMatrix, Mat4, MulVectorMatrix };
 use crate::grid::Grid;
 use crate::mouse::{ MouseTracker, FloatPos };
 use crate::net::send;
+use crate::player::Player;
 use crate::playermove::PlayerMove;
 use crate::utils::{ now, Size };
 pub use crate::log;
@@ -20,7 +23,6 @@ pub struct Game {
     tile_scale: f32,
     aspect_ratio: f32,
     grid: Grid,
-    image: HtmlImageElement,
     view_matrix: Mat4,
     projection_matrix: Mat4,
     last_time: f64,
@@ -29,9 +31,16 @@ pub struct Game {
     model_buffer: Option<WebGlBuffer>,
     hover_tile: Option<Size>,
     mouse_tracker: MouseTracker,
+    ws: WebSocket,
+    players: Rc<RefCell<Vec<Player>>>,
 }
 impl Game {
-    pub fn new(canvas_id: &str, grid: Grid) -> Game {
+    pub(crate) fn new(
+        canvas_id: &str,
+        grid: Grid,
+        ws: &WebSocket,
+        players: &Rc<RefCell<Vec<Player>>>
+    ) -> Game {
         let document = web_sys::window().unwrap().document().unwrap();
         let canvas = document.get_element_by_id(canvas_id).unwrap();
         let canvas: web_sys::HtmlCanvasElement = canvas
@@ -41,9 +50,6 @@ impl Game {
         let gl: WebGl2RenderingContext = Game::init_webgl_context(&canvas);
         let shader_program: WebGlProgram = Game::setup_shaders(&gl).unwrap();
 
-        let image = web_sys::HtmlImageElement::new().unwrap();
-        image.set_src("texture.png");
-
         let mut instance = Self {
             frames: 0,
             gl: gl,
@@ -51,7 +57,6 @@ impl Game {
             tile_scale: 0.8,
             aspect_ratio: 1.0,
             grid: grid,
-            image: image,
             view_matrix: Mat4::identity(),
             projection_matrix: Mat4::create_perspective(PI / 2.0, 1.0, 0.1, 100.0),
             last_time: now(),
@@ -60,6 +65,8 @@ impl Game {
             model_buffer: None,
             hover_tile: None,
             mouse_tracker: MouseTracker::new(),
+            ws: ws.clone(),
+            players: players.clone(),
         };
 
         instance.init();
@@ -292,7 +299,7 @@ impl Game {
         gl.enable_vertex_attrib_array(colors_location as u32);
     }
 
-    fn setup_texture(&mut self, texture_coords: &[f32]) -> web_sys::WebGlTexture {
+    fn setup_texture(&mut self, texture_coords: &[f32], pos: &Size) -> web_sys::WebGlTexture {
         let texture_coords_array = unsafe { js_sys::Float32Array::view(&texture_coords) };
         let texture_coords_buffer = self.gl.create_buffer().unwrap();
         self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
@@ -309,14 +316,25 @@ impl Game {
         let texture = self.gl.create_texture().unwrap();
         self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&texture));
 
-        let _ = self.gl.tex_image_2d_with_u32_and_u32_and_html_image_element(
-            WebGl2RenderingContext::TEXTURE_2D,
-            0,
-            WebGl2RenderingContext::RGB.try_into().unwrap(),
-            WebGl2RenderingContext::RGB,
-            WebGl2RenderingContext::UNSIGNED_BYTE,
-            &self.image
-        );
+        let result = self.grid.get_pos(pos);
+        if result.is_some() {
+            let index = self.players
+                .borrow()
+                .iter()
+                .position(|p| p.id == result.unwrap());
+            if index.is_some() {
+                let texture_image = self.players.borrow_mut()[index.unwrap()].get_image(&self.ws);
+
+                let _ = self.gl.tex_image_2d_with_u32_and_u32_and_html_image_element(
+                    WebGl2RenderingContext::TEXTURE_2D,
+                    0,
+                    WebGl2RenderingContext::RGB.try_into().unwrap(),
+                    WebGl2RenderingContext::RGB,
+                    WebGl2RenderingContext::UNSIGNED_BYTE,
+                    &texture_image
+                );
+            }
+        }
 
         let texture_coord_location = self.gl.get_attrib_location(
             &self.shader_program,
@@ -622,8 +640,6 @@ impl Game {
             }
         }
 
-        let _texture = self.setup_texture(&texture_coords);
-
         self.setup_vertices(&vertices);
         Game::setup_colors(&self.gl, &colors, &self.shader_program);
         //self.setup_models(&models);
@@ -635,6 +651,11 @@ impl Game {
 
         for i in 0..indices.len() / 6 {
             self.setup_models(&models[i * 16..i * 16 + 16]);
+            let _texture = self.setup_texture(
+                &texture_coords,
+                &Size::new(((i as i32) - 1) % self.grid.size.x, ((i as i32) - 1) / self.grid.size.x)
+            );
+
             self.gl.draw_elements_instanced_with_i32(
                 WebGl2RenderingContext::TRIANGLES,
                 6,
@@ -733,12 +754,9 @@ impl Game {
     }
     fn get_texture_pos(&self, x: i32, y: i32) -> [f32; 8] {
         let padding = 0.01;
-        let index_option = self.grid.get_pos(&Size::new(x, y));
-        let index = (if index_option.is_some() { index_option.unwrap() + 1 } else { 0 }) as f32; // .texture_indices[(y * self.grid.size.x + x) as usize]
-        let size = (self.image.height() as f32) / (self.image.width() as f32);
 
-        let left = index * size + padding;
-        let right = index * size + size - padding;
+        let left = 0.0 + padding;
+        let right = 1.0 - padding;
         let top = 0.0 + padding;
         let bottom = 1.0 - padding;
 

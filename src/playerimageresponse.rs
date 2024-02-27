@@ -1,4 +1,3 @@
-use js_sys::JSON;
 use serde::Deserialize;
 
 use crate::utils::from_json;

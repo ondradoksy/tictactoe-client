@@ -1,8 +1,7 @@
-use std::{ cell::RefCell, rc::Rc };
-
 use serde::Deserialize;
+use web_sys::{ HtmlImageElement, WebSocket };
 
-use crate::playerimageresponse::PlayerImageResponse;
+use crate::{ net::send, playerimageresponse::PlayerImageResponse };
 
 #[derive(Deserialize, Clone)]
 pub(crate) struct Player {
@@ -10,17 +9,20 @@ pub(crate) struct Player {
     pub joined_game_id: Option<u32>,
     pub ready: bool,
     pub name: String,
-    #[serde(skip_serializing)]
-    image: Option<String>,
+    #[serde(skip_deserializing)]
+    image: Option<HtmlImageElement>,
 }
 impl Player {
-    pub fn get_image(&self) -> Option<String> {
+    pub fn get_image(&mut self, ws: &WebSocket) -> HtmlImageElement {
         if self.image.is_none() {
+            send(ws, "get_image", self.id.to_string().as_str());
+            self.image = Some(HtmlImageElement::new().unwrap());
         }
-        self.image.clone()
+        self.image.clone().unwrap()
     }
     pub fn set_image(&mut self, image: String) {
-        self.image = Some(image);
+        self.image = Some(HtmlImageElement::new().unwrap());
+        self.image.clone().unwrap().set_src(format!("data:image/png;base64,{}", image).as_str());
     }
 }
 impl PartialEq for Player {

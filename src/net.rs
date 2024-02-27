@@ -66,7 +66,12 @@ pub(crate) fn start_websocket(
                     }
                     "new_move" => { new_move(event.content.as_str(), &mut game_clone.borrow_mut()) }
                     "current_state" => {
-                        start_game(event.content.as_str(), &mut game_clone.borrow_mut());
+                        start_game(
+                            event.content.as_str(),
+                            &mut game_clone.borrow_mut(),
+                            &ws_clone,
+                            &players_clone
+                        );
                     }
                     "player_image" => {
                         update_player_image(
@@ -199,7 +204,12 @@ fn joined_game(
     *current_game = Some(game_list.borrow()[index].clone());
 }
 
-fn start_game(content: &str, game: &mut Option<Game>) {
+fn start_game(
+    content: &str,
+    game: &mut Option<Game>,
+    ws: &WebSocket,
+    players: &Rc<RefCell<Vec<Player>>>
+) {
     let grid_result = Grid::from_json(content);
     if grid_result.is_err() {
         error!("{}", grid_result.err().unwrap());
@@ -208,7 +218,7 @@ fn start_game(content: &str, game: &mut Option<Game>) {
     let grid = grid_result.unwrap();
     log!("{:?}", grid);
 
-    *game = Some(Game::new("game", grid));
+    *game = Some(Game::new("game", grid, ws, players));
     let lobby = get_element_by_id("lobby");
     lobby.set_class_name(lobby.class_name().add(" hidden").as_str());
 

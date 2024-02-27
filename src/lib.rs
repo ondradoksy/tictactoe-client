@@ -11,7 +11,7 @@ mod grid;
 mod playermove;
 mod playerimageresponse;
 
-use std::{ cell::RefCell, rc::Rc, convert::TryInto };
+use std::{ cell::RefCell, convert::TryInto, rc::Rc };
 
 use gameparameters::GameParameters;
 use net::{ start_websocket, send };

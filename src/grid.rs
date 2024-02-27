@@ -11,6 +11,7 @@ impl Grid {
     pub fn from_json(text: &str) -> Result<Self, String> {
         from_json(text)
     }
+    /// Returns None if the tile is empty, otherwise returns the player's id.
     pub fn get_pos(&self, pos: &Size) -> Option<u32> {
         let index = self.get_index(pos);
 
