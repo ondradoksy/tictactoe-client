@@ -4,7 +4,7 @@ use crate::utils::{ Size, from_json };
 
 #[derive(Deserialize, Debug)]
 pub struct PlayerMove {
-    pub player: u32,
+    pub player: i32,
     pub position: Size,
 }
 impl PlayerMove {

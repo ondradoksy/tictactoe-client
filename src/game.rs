@@ -70,7 +70,11 @@ impl Game {
             mouse_tracker: MouseTracker::new(),
             ws: ws.clone(),
             players: players.clone(),
-            textures: Vec::from([Texture::from_url(-1, "empty.png")]),
+            textures: Vec::from([
+                Texture::from_url(-1, "empty.png"),
+                Texture::from_url(-2, "blocked.png"),
+                Texture::from_url(-3, "unknown.png"),
+            ]),
         };
 
         instance.init();
@@ -323,26 +327,6 @@ impl Game {
 
         let texture = self.gl.create_texture().unwrap();
         self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&texture));
-
-        // let result = self.grid.get_pos(pos);
-        // if result.is_some() {
-        //     let index = self.players
-        //         .borrow()
-        //         .iter()
-        //         .position(|p| p.id == result.unwrap());
-        //     if index.is_some() {
-        //         let texture_image = self.players.borrow_mut()[index.unwrap()].get_image(&self.ws);
-
-        //         let _ = self.gl.tex_image_2d_with_u32_and_u32_and_html_image_element(
-        //             WebGl2RenderingContext::TEXTURE_2D,
-        //             0,
-        //             WebGl2RenderingContext::RGB.try_into().unwrap(),
-        //             WebGl2RenderingContext::RGB,
-        //             WebGl2RenderingContext::UNSIGNED_BYTE,
-        //             &texture_image
-        //         );
-        //     }
-        // }
 
         let _ = self.gl.tex_image_2d_with_u32_and_u32_and_html_image_element(
             WebGl2RenderingContext::TEXTURE_2D,
@@ -609,7 +593,7 @@ impl Game {
             let texture_index = self.textures
                 .iter()
                 .position(|p| p.id == cur.texture_id)
-                .expect("Texture not found");
+                .unwrap_or(2);
 
             let _texture = self.setup_texture(
                 &cur.texture_coords,
