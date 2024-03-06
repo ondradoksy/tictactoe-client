@@ -8,11 +8,13 @@ use std::convert::TryFrom;
 use std::f32::consts::PI;
 use std::rc::Rc;
 use webgl_matrix::{ Matrix, ProjectionMatrix, Mat4, MulVectorMatrix };
+use crate::gameobject::GameObject;
 use crate::grid::Grid;
 use crate::mouse::{ MouseTracker, FloatPos };
 use crate::net::send;
 use crate::player::Player;
 use crate::playermove::PlayerMove;
+use crate::texture::Texture;
 use crate::utils::{ now, Size };
 pub use crate::log;
 
@@ -33,6 +35,7 @@ pub struct Game {
     mouse_tracker: MouseTracker,
     ws: WebSocket,
     players: Rc<RefCell<Vec<Player>>>,
+    textures: Vec<Texture>,
 }
 impl Game {
     pub(crate) fn new(
@@ -67,6 +70,7 @@ impl Game {
             mouse_tracker: MouseTracker::new(),
             ws: ws.clone(),
             players: players.clone(),
+            textures: Vec::from([Texture::from_url(-1, "empty.png")]),
         };
 
         instance.init();
@@ -299,7 +303,11 @@ impl Game {
         gl.enable_vertex_attrib_array(colors_location as u32);
     }
 
-    fn setup_texture(&mut self, texture_coords: &[f32], pos: &Size) -> web_sys::WebGlTexture {
+    fn setup_texture(
+        &mut self,
+        texture_coords: &[f32],
+        texture_image: HtmlImageElement
+    ) -> web_sys::WebGlTexture {
         let texture_coords_array = unsafe { js_sys::Float32Array::view(&texture_coords) };
         let texture_coords_buffer = self.gl.create_buffer().unwrap();
         self.gl.bind_buffer(WebGl2RenderingContext::ARRAY_BUFFER, Some(&texture_coords_buffer));
@@ -316,25 +324,34 @@ impl Game {
         let texture = self.gl.create_texture().unwrap();
         self.gl.bind_texture(WebGl2RenderingContext::TEXTURE_2D, Some(&texture));
 
-        let result = self.grid.get_pos(pos);
-        if result.is_some() {
-            let index = self.players
-                .borrow()
-                .iter()
-                .position(|p| p.id == result.unwrap());
-            if index.is_some() {
-                let texture_image = self.players.borrow_mut()[index.unwrap()].get_image(&self.ws);
+        // let result = self.grid.get_pos(pos);
+        // if result.is_some() {
+        //     let index = self.players
+        //         .borrow()
+        //         .iter()
+        //         .position(|p| p.id == result.unwrap());
+        //     if index.is_some() {
+        //         let texture_image = self.players.borrow_mut()[index.unwrap()].get_image(&self.ws);
 
-                let _ = self.gl.tex_image_2d_with_u32_and_u32_and_html_image_element(
-                    WebGl2RenderingContext::TEXTURE_2D,
-                    0,
-                    WebGl2RenderingContext::RGB.try_into().unwrap(),
-                    WebGl2RenderingContext::RGB,
-                    WebGl2RenderingContext::UNSIGNED_BYTE,
-                    &texture_image
-                );
-            }
-        }
+        //         let _ = self.gl.tex_image_2d_with_u32_and_u32_and_html_image_element(
+        //             WebGl2RenderingContext::TEXTURE_2D,
+        //             0,
+        //             WebGl2RenderingContext::RGB.try_into().unwrap(),
+        //             WebGl2RenderingContext::RGB,
+        //             WebGl2RenderingContext::UNSIGNED_BYTE,
+        //             &texture_image
+        //         );
+        //     }
+        // }
+
+        let _ = self.gl.tex_image_2d_with_u32_and_u32_and_html_image_element(
+            WebGl2RenderingContext::TEXTURE_2D,
+            0,
+            WebGl2RenderingContext::RGB.try_into().unwrap(),
+            WebGl2RenderingContext::RGB,
+            WebGl2RenderingContext::UNSIGNED_BYTE,
+            &texture_image
+        );
 
         let texture_coord_location = self.gl.get_attrib_location(
             &self.shader_program,
@@ -440,29 +457,26 @@ impl Game {
     }
 
     pub fn draw_grid(&mut self) {
-        let mut vertices: Vec<f32> = Vec::with_capacity(
-            (self.grid.size.x * self.grid.size.y * 4 * 3) as usize
-        );
-        let mut colors: Vec<f32> = Vec::with_capacity(
-            (self.grid.size.x * self.grid.size.y * 4 * 4) as usize
-        );
-        let mut indices: Vec<u16> = Vec::with_capacity(
-            (self.grid.size.x * self.grid.size.y * 6) as usize
-        );
+        {
+            // Setup textures
+            for player in self.players.borrow_mut().iter_mut() {
+                let index = self.textures
+                    .iter()
+                    .position(|p| p.id == player.id.try_into().unwrap());
+                if index != None {
+                    self.textures[index.unwrap()].image = player.get_image(&self.ws);
+                    continue;
+                }
+                let image = player.get_image(&self.ws);
+                self.textures.push(Texture::new(player.id.try_into().unwrap(), image));
+            }
+        }
 
         let width: f32 = i32::try_from(self.grid.size.x).unwrap() as f32;
         let height: f32 = i32::try_from(self.grid.size.y).unwrap() as f32;
 
         let tile_width: f32 = 1.0 / width;
         let tile_height: f32 = 1.0 / height;
-
-        let mut texture_coords: Vec<f32> = Vec::with_capacity(
-            (self.grid.size.x * self.grid.size.y * 6 * 2) as usize
-        );
-
-        let mut models: Vec<f32> = Vec::with_capacity(
-            (self.grid.size.x * self.grid.size.y * 16) as usize
-        );
 
         self.projection_matrix = Mat4::create_perspective(PI / 2.0, self.aspect_ratio, 0.1, 100.0);
 
@@ -471,53 +485,22 @@ impl Game {
 
         self.setup_3d();
 
+        let mut game_objects: Vec<GameObject> = Vec::new();
+
         // background
         {
-            let model_matrix = Mat4::identity();
-
-            models.extend_from_slice(&model_matrix);
-
-            let index_start = vertices.len() / 3;
-            indices.push((index_start + 0) as u16);
-            indices.push((index_start + 1) as u16);
-            indices.push((index_start + 2) as u16);
-
-            indices.push((index_start + 2) as u16);
-            indices.push((index_start + 3) as u16);
-            indices.push((index_start + 1) as u16);
-
-            vertices.push(-1.0);
-            vertices.push(1.0);
-            vertices.push(0.0);
-
-            vertices.push(-1.0);
-            vertices.push(-1.0);
-            vertices.push(0.0);
-
-            vertices.push(1.0);
-            vertices.push(1.0);
-            vertices.push(0.0);
-
-            vertices.push(1.0);
-            vertices.push(-1.0);
-            vertices.push(0.0);
-
-            colors.extend_from_slice(&[0.0, 0.0, 0.0, 1.0]);
-            colors.extend_from_slice(&[0.0, 0.0, 0.0, 1.0]);
-            colors.extend_from_slice(&[0.0, 0.0, 0.0, 1.0]);
-            colors.extend_from_slice(&[0.0, 0.0, 0.0, 1.0]);
-
-            texture_coords.push(0.0);
-            texture_coords.push(0.0);
-
-            texture_coords.push(0.0);
-            texture_coords.push(0.0);
-
-            texture_coords.push(0.0);
-            texture_coords.push(0.0);
-
-            texture_coords.push(0.0);
-            texture_coords.push(0.0);
+            game_objects.push(
+                GameObject::new(
+                    Mat4::identity(),
+                    Vec::from([0, 1, 2, 2, 3, 1]),
+                    Vec::from([-1.0, 1.0, 0.0, -1.0, -1.0, 0.0, 1.0, 1.0, 0.0, 1.0, -1.0, 0.0]),
+                    Vec::from([
+                        0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
+                    ]),
+                    Vec::from([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+                    -1
+                )
+            );
         }
 
         let scale = if self.grid.size.x > self.grid.size.y {
@@ -536,41 +519,7 @@ impl Game {
                 let origin_x = Game::convert_x_to_screen((j as f32) * tile_size + tile_size / 2.0);
                 let origin_y = Game::convert_y_to_screen((i as f32) * tile_size + tile_size / 2.0);
 
-                let left: f32 = -1.0;
-                let right: f32 = 1.0;
-                let top: f32 = 1.0;
-                let bottom: f32 = -1.0;
-
-                let index_start = vertices.len() / 3;
-                // Triangle 1
-                indices.push((index_start + 0) as u16);
-                indices.push((index_start + 1) as u16);
-                indices.push((index_start + 2) as u16);
-
-                // Triangle 2
-                indices.push((index_start + 2) as u16);
-                indices.push((index_start + 3) as u16);
-                indices.push((index_start + 0) as u16);
-
-                // Vertices
-                vertices.push(right); // X
-                vertices.push(top); // Y
-                vertices.push(0.0); // Z
-
-                vertices.push(left); // X
-                vertices.push(top); // Y
-                vertices.push(0.0); // Z
-
-                vertices.push(left); // X
-                vertices.push(bottom); // Y
-                vertices.push(0.0); // Z
-
-                vertices.push(right); // X
-                vertices.push(bottom); // Y
-                vertices.push(0.0); // Z
-
                 // Model
-                let vertices_index: usize = vertices.len() - 12;
                 let mut model_matrix = Mat4::identity();
                 model_matrix[0] = scale * self.tile_scale;
                 model_matrix[5] = scale * self.tile_scale;
@@ -580,15 +529,7 @@ impl Game {
                 model_matrix[13] = origin_y;
                 model_matrix[14] = 0.1;
 
-                let screen_pos = get_pos_center(
-                    &self.get_tile_pos_on_screen(
-                        &vertices[vertices_index + 0..vertices_index + 3].try_into().unwrap(),
-                        &vertices[vertices_index + 3..vertices_index + 6].try_into().unwrap(),
-                        &vertices[vertices_index + 6..vertices_index + 9].try_into().unwrap(),
-                        &vertices[vertices_index + 9..vertices_index + 12].try_into().unwrap(),
-                        &model_matrix
-                    )
-                );
+                let screen_pos = get_pos_center(&self.get_tile_pos_on_screen(&model_matrix));
 
                 let rotation_multiplier = 0.1;
 
@@ -607,20 +548,7 @@ impl Game {
                     &[1.0, 0.0, 0.0]
                 );
 
-                models.extend_from_slice(&model_matrix);
-
-                // Colors
-                let vertices_index: usize = vertices.len() - 12;
-
-                let tile_colors = self.get_tile_colors(
-                    j,
-                    i,
-                    &vertices[vertices_index + 0..vertices_index + 3].try_into().unwrap(),
-                    &vertices[vertices_index + 3..vertices_index + 6].try_into().unwrap(),
-                    &vertices[vertices_index + 6..vertices_index + 9].try_into().unwrap(),
-                    &vertices[vertices_index + 9..vertices_index + 12].try_into().unwrap(),
-                    &model_matrix
-                );
+                let tile_colors = self.get_tile_colors(j, i, &model_matrix);
 
                 let mut iter = tile_colors.chunks_exact(4);
 
@@ -629,40 +557,74 @@ impl Game {
                 let rt_color: &[f32] = iter.next().unwrap();
                 let rb_color: &[f32] = iter.next().unwrap();
 
-                colors.extend_from_slice(&rt_color);
-                colors.extend_from_slice(&lt_color);
-                colors.extend_from_slice(&lb_color);
-                colors.extend_from_slice(&rb_color);
+                let mut clrs: Vec<f32> = Vec::new();
 
-                // Texture
-                let texture_pos: [f32; 8] = self.get_texture_pos(j as i32, i as i32);
-                texture_coords.extend_from_slice(&texture_pos);
+                clrs.extend_from_slice(&rt_color);
+                clrs.extend_from_slice(&lt_color);
+                clrs.extend_from_slice(&lb_color);
+                clrs.extend_from_slice(&rb_color);
+
+                let texture_id = self.grid.get_pos(&Size::new(j, i));
+
+                game_objects.push(
+                    GameObject::new_tile(model_matrix, clrs, if texture_id.is_some() {
+                        texture_id.unwrap().try_into().unwrap()
+                    } else {
+                        -1
+                    })
+                );
             }
         }
 
-        self.setup_vertices(&vertices);
-        Game::setup_colors(&self.gl, &colors, &self.shader_program);
-        //self.setup_models(&models);
-        self.setup_indices(&indices);
-
         if self.frames % 100 == 0 {
-            log!("Rendering: {:?} triangles", indices.len() / 3);
+            log!("Rendering: {:?} objects", game_objects.len());
         }
 
-        for i in 0..indices.len() / 6 {
-            self.setup_models(&models[i * 16..i * 16 + 16]);
+        let mut render_iter = 0;
+        game_objects.sort_by(|a, b| a.texture_id.cmp(&b.texture_id));
+        while render_iter < game_objects.len() {
+            let cur = &game_objects[render_iter];
+            let mut batch_size: usize = 1;
+            let mut models_matrices: Vec<f32> = Vec::from(cur.model_matrix);
+
+            for i in render_iter + 1..game_objects.len() {
+                if
+                    cur.texture_id != game_objects[i].texture_id ||
+                    cur.colors != game_objects[i].colors
+                {
+                    break;
+                }
+                batch_size += 1;
+                models_matrices.extend(game_objects[i].model_matrix.iter());
+            }
+
+            self.setup_vertices(&cur.vertices);
+
+            Game::setup_colors(&self.gl, &cur.colors, &self.shader_program);
+
+            self.setup_indices(&cur.indices);
+
+            self.setup_models(&models_matrices);
+
+            let texture_index = self.textures
+                .iter()
+                .position(|p| p.id == cur.texture_id)
+                .expect("Texture not found");
+
             let _texture = self.setup_texture(
-                &texture_coords,
-                &Size::new(((i as i32) - 1) % self.grid.size.x, ((i as i32) - 1) / self.grid.size.x)
+                &cur.texture_coords,
+                self.textures[texture_index].image.clone()
             );
 
             self.gl.draw_elements_instanced_with_i32(
                 WebGl2RenderingContext::TRIANGLES,
                 6,
                 WebGl2RenderingContext::UNSIGNED_SHORT,
-                (i * 12) as i32,
-                1
+                0,
+                batch_size.try_into().unwrap()
             );
+
+            render_iter += batch_size;
         }
     }
 
@@ -703,22 +665,13 @@ impl Game {
         y / -2.0 - 1.0
     }
 
-    fn get_tile_colors(
-        &mut self,
-        x: i32,
-        y: i32,
-        tr: &[f32; 3],
-        tl: &[f32; 3],
-        bl: &[f32; 3],
-        br: &[f32; 3],
-        model_matrix: &Mat4
-    ) -> [f32; 16] {
+    fn get_tile_colors(&mut self, x: i32, y: i32, model_matrix: &Mat4) -> [f32; 16] {
         let mut lt_color: [f32; 4] = [1.0, 0.0, 0.0, 0.1];
         let mut lb_color: [f32; 4] = [0.0, 1.0, 0.0, 0.1];
         let mut rt_color: [f32; 4] = [0.0, 0.0, 1.0, 0.1];
         let mut rb_color: [f32; 4] = [0.0, 0.0, 0.0, 0.1];
 
-        let screen_pos = self.get_tile_pos_on_screen(tr, tl, bl, br, &model_matrix);
+        let screen_pos = self.get_tile_pos_on_screen(&model_matrix);
 
         if
             self.hover_tile == None &&
@@ -752,25 +705,18 @@ impl Game {
 
         result
     }
-    fn get_texture_pos(&self, x: i32, y: i32) -> [f32; 8] {
-        let padding = 0.01;
 
-        let left = 0.0 + padding;
-        let right = 1.0 - padding;
-        let top = 0.0 + padding;
-        let bottom = 1.0 - padding;
+    fn get_tile_pos_on_screen(&self, model_matrix: &Mat4) -> [f32; 8] {
+        let left: f32 = -1.0;
+        let right: f32 = 1.0;
+        let top: f32 = 1.0;
+        let bottom: f32 = -1.0;
 
-        [right, top, left, top, left, bottom, right, bottom]
-    }
+        let tr = [right, top, 0.0];
+        let tl = [left, top, 0.0];
+        let bl = [left, bottom, 0.0];
+        let br = [right, bottom, 0.0];
 
-    fn get_tile_pos_on_screen(
-        &self,
-        tr: &[f32; 3],
-        tl: &[f32; 3],
-        bl: &[f32; 3],
-        br: &[f32; 3],
-        model_matrix: &Mat4
-    ) -> [f32; 8] {
         let mut tl_pos = [tl[0], tl[1], tl[2], 1.0];
         let mut bl_pos = [bl[0], bl[1], bl[2], 1.0];
         let mut tr_pos = [tr[0], tr[1], tr[2], 1.0];

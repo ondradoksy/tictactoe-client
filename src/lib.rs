@@ -10,6 +10,8 @@ mod gamemessageevent;
 mod grid;
 mod playermove;
 mod playerimageresponse;
+mod gameobject;
+mod texture;
 
 use std::{ cell::RefCell, convert::TryInto, rc::Rc };
 
