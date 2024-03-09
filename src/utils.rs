@@ -51,19 +51,6 @@ pub fn now() -> f64 {
         .now()
 }
 
-pub fn generate_random_u32(min: u32, max: u32) -> u32 {
-    let mut rand_array: [u8; 4] = [0u8; 4];
-    let crypto = web_sys::window().unwrap().crypto().unwrap();
-
-    crypto.get_random_values_with_u8_array(&mut rand_array).unwrap();
-
-    // Convert the random bytes to an i32 value.
-    let random_usize = u32::from_be_bytes(rand_array);
-
-    // Return a random i32 value between the specified min and max values.
-    (random_usize % (max - min + 1)) + min
-}
-
 pub fn window() -> Window {
     web_sys::window().expect("no global 'window' exists")
 }

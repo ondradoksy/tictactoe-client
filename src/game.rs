@@ -642,12 +642,6 @@ impl Game {
     fn convert_y_to_screen(y: f32) -> f32 {
         y * -2.0 + 1.0
     }
-    fn convert_x_from_screen(x: f32) -> f32 {
-        x / 2.0 + 1.0
-    }
-    fn convert_y_from_screen(y: f32) -> f32 {
-        y / -2.0 - 1.0
-    }
 
     fn get_tile_colors(&mut self, x: i32, y: i32, model_matrix: &Mat4) -> [f32; 16] {
         let mut lt_color: [f32; 4] = [1.0, 0.0, 0.0, 0.1];
