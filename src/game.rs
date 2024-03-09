@@ -765,8 +765,11 @@ impl Game {
                     // Click
                     log!("Clicked on {:?}", self.hover_tile);
                     if self.hover_tile.is_some() {
-                        send(ws, "move", self.hover_tile.unwrap().to_json().as_str());
-                        log!("Sent");
+                        let pos = self.hover_tile.unwrap();
+                        if self.grid.is_valid_move(&pos) {
+                            send(ws, "move", self.hover_tile.unwrap().to_json().as_str());
+                            log!("Sent move");
+                        }
                     }
                 }
                 self.mouse_tracker.set_up(0);
