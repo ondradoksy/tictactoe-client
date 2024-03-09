@@ -17,9 +17,9 @@ use std::{ cell::RefCell, convert::TryInto, rc::Rc };
 
 use gameparameters::GameParameters;
 use net::{ start_websocket, send };
-use utils::{ set_panic_hook, window, get_element_by_id, Size };
+use utils::{ get_element_by_id, get_elements_by_class_name, set_panic_hook, window, Size };
 use wasm_bindgen::prelude::*;
-use web_sys::{ MouseEvent, HtmlCanvasElement, WheelEvent, WebSocket };
+use web_sys::{ HtmlCanvasElement, HtmlElement, MouseEvent, WebSocket, WheelEvent };
 
 use crate::{ game::Game, gameinfo::GameInfo, player::Player, utils::document };
 
@@ -55,6 +55,7 @@ pub fn init() {
 
     register_menu_buttons(&ws);
     register_lobby_buttons(&ws);
+    register_tabs();
 }
 
 fn register_lobby_buttons(ws: &WebSocket) {
@@ -194,4 +195,95 @@ fn register_inputs(game: &Rc<RefCell<Option<Game>>>, canvas: &HtmlCanvasElement,
         .add_event_listener_with_callback("wheel", &cb.as_ref().unchecked_ref())
         .expect("Something went wrong");
     cb.forget();
+}
+
+fn register_tabs() {
+    let elements = get_elements_by_class_name("tab");
+    for i in 0..elements.length() {
+        let tab = elements.item(i).unwrap();
+        let tab_name: HtmlElement = tab
+            .get_elements_by_class_name("tab-name")
+            .item(0)
+            .expect("Missing tab-name")
+            .dyn_into()
+            .expect("Not HtmlElement type");
+        let tab_content_container: HtmlElement = tab
+            .get_elements_by_class_name("tab-content-container")
+            .item(0)
+            .expect("Missing tab-content-container")
+            .dyn_into()
+            .expect("Not HtmlElement type");
+        let tab_content: HtmlElement = tab
+            .get_elements_by_class_name("tab-content")
+            .item(0)
+            .expect("Missing tab-content")
+            .dyn_into()
+            .expect("Not HtmlElement type");
+
+        tab_content_container
+            .style()
+            .set_property("min-width", format!("{}px", tab_name.offset_width()).as_str())
+            .expect("Could not set min-width");
+
+        let tab_name_clone = tab_name.clone();
+
+        let cb = Closure::wrap(
+            Box::new(move || {
+                if tab_content_container.style().get_property_value("height").unwrap() == "" {
+                    let new_width = if
+                        tab_content.offset_width() > tab_name_clone.offset_width() + 50
+                    {
+                        tab_content.offset_width()
+                    } else {
+                        tab_name_clone.offset_width() + 50
+                    };
+
+                    tab_content_container
+                        .style()
+                        .set_property("width", format!("{}px", new_width).as_str())
+                        .expect("Could not set width");
+                    tab_content_container
+                        .style()
+                        .set_property(
+                            "min-width",
+                            format!("{}px", tab_name_clone.offset_width()).as_str()
+                        )
+                        .expect("Could not set min-width");
+                    tab_content_container
+                        .style()
+                        .set_property("border-radius", "1em 0 0 0")
+                        .expect("Could not set border-radius");
+                    tab_content_container
+                        .style()
+                        .set_property(
+                            "height",
+                            format!("{}px", tab_content.offset_height()).as_str()
+                        )
+                        .expect("Could not set height");
+                } else {
+                    tab_content_container
+                        .style()
+                        .set_property(
+                            "width",
+                            format!("{}px", tab_name_clone.offset_width()).as_str()
+                        )
+                        .expect("Could not set width");
+                    tab_content_container
+                        .style()
+                        .remove_property("border-radius")
+                        .expect("Could not remove border-radius");
+                    tab_content_container
+                        .style()
+                        .remove_property("height")
+                        .expect("Could not remove height");
+                }
+            }) as Box<dyn FnMut()>
+        );
+
+        tab_name
+            .add_event_listener_with_callback("click", cb.as_ref().unchecked_ref())
+            .expect("Unable to register event");
+
+        cb.forget();
+    }
 }

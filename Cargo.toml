@@ -51,7 +51,9 @@ features = [
     'FileReader',
     'ProgressEvent',
     'ErrorEvent',
-    'WheelEvent'
+    'WheelEvent',
+    'HtmlCollection',
+    'CssStyleDeclaration'
 ]
 
 [dev-dependencies]

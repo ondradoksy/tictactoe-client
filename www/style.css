@@ -40,3 +40,47 @@ section {
     border-radius: 1em;
     background: #222;
 }
+
+.tabs {
+    position: fixed;
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: end;
+    align-items: end;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    overflow: hidden;
+    flex-wrap: nowrap;
+}
+
+.tab {
+    z-index: 20;
+    margin: 0 0.51em;
+    height: min-content;
+    white-space: nowrap;
+}
+
+.tab-name {
+    padding: 0.5em 1em;
+    border-radius: 1em 1em 0 0;
+    background: #222;
+    cursor: pointer;
+    width: fit-content;
+    margin-left: auto;
+}
+
+.tab-content-container {
+    width: 0;
+    height: 0;
+    background: #222;
+    overflow: hidden;
+    transition: height 0.2s ease-in-out, width 0.2s ease-in-out 0.3s, border-radius 0.2s ease-in-out 0.3s;
+    border-radius: 0;
+}
+
+.tab-content {
+    padding: 1em;
+    width: fit-content;
+    height: fit-content;
+}
