@@ -19,7 +19,14 @@ use gameparameters::GameParameters;
 use net::{ start_websocket, send };
 use utils::{ get_element_by_id, get_elements_by_class_name, set_panic_hook, window, Size };
 use wasm_bindgen::prelude::*;
-use web_sys::{ HtmlCanvasElement, HtmlElement, MouseEvent, WebSocket, WheelEvent };
+use web_sys::{
+    HtmlCanvasElement,
+    HtmlElement,
+    HtmlSelectElement,
+    MouseEvent,
+    WebSocket,
+    WheelEvent,
+};
 
 use crate::{ game::Game, gameinfo::GameInfo, player::Player, utils::document };
 
@@ -66,6 +73,30 @@ fn register_lobby_buttons(ws: &WebSocket) {
         }) as Box<dyn FnMut()>
     );
     get_element_by_id("ready-btn")
+        .add_event_listener_with_callback("click", cb.as_ref().unchecked_ref())
+        .expect("Unable to register event");
+    cb.forget();
+
+    let ws_clone = ws.clone();
+    let cb = Closure::wrap(
+        Box::new(move || {
+            let select = get_element_by_id("game-bot-type")
+                .dyn_into::<HtmlSelectElement>()
+                .expect("Not a select element");
+
+            send(
+                &ws_clone,
+                "add_bot",
+                select
+                    .item(select.selected_index().try_into().unwrap())
+                    .expect("No element selected")
+                    .get_attribute("value")
+                    .expect("No value")
+                    .as_str()
+            );
+        }) as Box<dyn FnMut()>
+    );
+    get_element_by_id("game-bot-btn")
         .add_event_listener_with_callback("click", cb.as_ref().unchecked_ref())
         .expect("Unable to register event");
     cb.forget();

@@ -41,6 +41,10 @@ section {
     background: #222;
 }
 
+section>div {
+    padding: 1em 0;
+}
+
 .tabs {
     position: fixed;
     display: flex;

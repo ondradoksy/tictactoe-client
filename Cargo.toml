@@ -53,7 +53,8 @@ features = [
     'ErrorEvent',
     'WheelEvent',
     'HtmlCollection',
-    'CssStyleDeclaration'
+    'CssStyleDeclaration',
+    'HtmlSelectElement'
 ]
 
 [dev-dependencies]
