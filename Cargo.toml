@@ -54,7 +54,8 @@ features = [
     'WheelEvent',
     'HtmlCollection',
     'CssStyleDeclaration',
-    'HtmlSelectElement'
+    'HtmlSelectElement',
+    'HtmlInputElement'
 ]
 
 [dev-dependencies]

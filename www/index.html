@@ -18,7 +18,25 @@
     <div id="menu" class="fullscreen">
       <section>
         <h1>Game creation</h1>
-        <button id="new-game-btn">Create game</button>
+        <div>
+          <label for="new-game-size-h">Width: </label>
+          <input type="text" id="new-game-size-w" value="10">
+        </div>
+        <div>
+          <label for="new-game-size-h">Height: </label>
+          <input type="text" id="new-game-size-h" value="10">
+        </div>
+        <div>
+          <label for="new-game-hotjoin">Hotjoin: </label>
+          <input type="checkbox" id="new-game-hotjoin" checked="true">
+        </div>
+        <div>
+          <label for="new-game-win-length">Win Length: </label>
+          <input type="text" id="new-game-win-length" value="4">
+        </div>
+        <div>
+          <button id="new-game-btn">Create game</button>
+        </div>
       </section>
       <section>
         <h1>Games</h1>
@@ -36,16 +54,20 @@
     <div id="lobby" class="fullscreen hidden">
       <section>
         <h1>Game info</h1>
-        <div id="game-id">
-
+        <div>
+          ID: <span id="game-id"></span>
         </div>
         <div>
-          <label for="game-size-h">Width: </label>
-          <input type="text" id="game-size-w" value="10">
+          Width: <span id="game-size-w"></span>
         </div>
         <div>
-          <label for="game-size-h">Height: </label>
-          <input type="text" id="game-size-h" value="10">
+          Height: <span id="game-size-h"></span>
+        </div>
+        <div>
+          Hotjoin: <span id="game-hotjoin"></span>
+        </div>
+        <div>
+          Win Length: <span id="game-win-length"></span>
         </div>
         <div>
           <button class="button" id="game-bot-btn">Add Bot</button>

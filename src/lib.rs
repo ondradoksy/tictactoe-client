@@ -28,7 +28,12 @@ use web_sys::{
     WheelEvent,
 };
 
-use crate::{ game::Game, gameinfo::GameInfo, player::Player, utils::document };
+use crate::{
+    game::Game,
+    gameinfo::GameInfo,
+    player::Player,
+    utils::{ document, get_input_element_by_id },
+};
 
 extern crate js_sys;
 extern crate web_sys;
@@ -106,10 +111,31 @@ fn register_menu_buttons(ws: &WebSocket) {
     let ws_clone = ws.clone();
     let cb = Closure::wrap(
         Box::new(move || {
+            let width = get_input_element_by_id("new-game-size-w").value();
+            let height = get_input_element_by_id("new-game-size-h").value();
+            let hotjoin = get_input_element_by_id("new-game-hotjoin").checked();
+            let win_length = get_input_element_by_id("new-game-win-length").value();
+
+            let width_parsed = width.parse();
+            let height_parsed = height.parse();
+            let win_length_parsed = win_length.parse();
+
+            if width_parsed.is_err() || height_parsed.is_err() || win_length_parsed.is_err() {
+                error!("One or more values could not be parsed");
+                return;
+            }
+
             send(
                 &ws_clone,
                 "create_game",
-                GameParameters::new(Size::new(10, 10), true, 10, 5).to_json().as_str()
+                GameParameters::new(
+                    Size::new(width_parsed.ok().unwrap(), height_parsed.ok().unwrap()),
+                    hotjoin,
+                    100,
+                    win_length_parsed.ok().unwrap()
+                )
+                    .to_json()
+                    .as_str()
             );
         }) as Box<dyn FnMut()>
     );

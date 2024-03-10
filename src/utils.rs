@@ -1,7 +1,7 @@
 use js_sys::JSON;
 use serde::{ Serialize, Deserialize };
 use wasm_bindgen::{ JsCast, closure::Closure, JsValue };
-use web_sys::{ Document, Element, Event, HtmlCollection, HtmlElement, Window };
+use web_sys::{ Document, Element, Event, HtmlCollection, HtmlElement, HtmlInputElement, Window };
 
 extern crate web_sys;
 
@@ -111,6 +111,9 @@ pub fn get_element_by_id(id: &str) -> HtmlElement {
         .expect("Element not found")
         .dyn_into()
         .expect("Not HtmlElement type")
+}
+pub fn get_input_element_by_id(id: &str) -> HtmlInputElement {
+    get_element_by_id(id).dyn_into().expect("Not HtmlInputElement type")
 }
 
 pub fn get_elements_by_class_name(name: &str) -> HtmlCollection {

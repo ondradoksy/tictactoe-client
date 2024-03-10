@@ -132,11 +132,15 @@ fn update_player_list(players: &mut Vec<Player>, content: &str) {
     let list: HtmlElement = players_div();
     list.set_inner_html("");
 
+    let list_game = get_element_by_id("game-player-list");
+    list_game.set_inner_html("");
+
     for p in player_list {
         debug!("Player: {} {} {:?} {}", p.id, p.name, p.joined_game_id, p.ready);
         let div = document().create_element("div").expect("Unable to create div");
         div.set_text_content(Some(format!("{}#{}", p.name, p.id).as_str()));
         list.append_child(&div).expect("Unable to add player to list");
+        list_game.append_child(&div).expect("Unable to add player to list");
     }
 }
 fn update_game_list(content: &str, ws: &WebSocket, game_list: &Rc<RefCell<Vec<GameInfo>>>) {
@@ -202,6 +206,23 @@ fn joined_game(
         .unwrap();
 
     *current_game = Some(game_list.borrow()[index].clone());
+
+    // Display game info
+    get_element_by_id("game-id").set_text_content(
+        Some(current_game.as_ref().unwrap().id.to_string().as_str())
+    );
+    get_element_by_id("game-size-w").set_text_content(
+        Some(current_game.as_ref().unwrap().width.to_string().as_str())
+    );
+    get_element_by_id("game-size-h").set_text_content(
+        Some(current_game.as_ref().unwrap().height.to_string().as_str())
+    );
+    get_element_by_id("game-hotjoin").set_text_content(
+        Some(current_game.as_ref().unwrap().hotjoin.to_string().as_str())
+    );
+    get_element_by_id("game-win-length").set_text_content(
+        Some(current_game.as_ref().unwrap().length_to_win.to_string().as_str())
+    );
 }
 
 fn start_game(

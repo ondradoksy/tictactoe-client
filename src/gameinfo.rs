@@ -10,4 +10,6 @@ pub(crate) struct GameInfo {
     pub player_limit: u32,
     pub running: bool,
     pub length_to_win: u32,
+    pub width: u32,
+    pub height: u32,
 }
