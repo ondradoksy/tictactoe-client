@@ -740,17 +740,23 @@ impl Game {
         match e.button() {
             0 => {
                 // Left
-                let diff =
-                    self.mouse_tracker.get_current_pos() - self.mouse_tracker.get_pos(0).unwrap();
+                if self.mouse_tracker.get_pos(0).is_some() {
+                    let diff =
+                        self.mouse_tracker.get_current_pos() -
+                        self.mouse_tracker.get_pos(0).unwrap();
 
-                if self.mouse_tracker.get_time_held(0).unwrap() < 1000.0 && diff.abs().max() < 0.1 {
-                    // Click
-                    log!("Clicked on {:?}", self.hover_tile);
-                    if self.hover_tile.is_some() {
-                        let pos = self.hover_tile.unwrap();
-                        if self.grid.is_valid_move(&pos) {
-                            send(ws, "move", self.hover_tile.unwrap().to_json().as_str());
-                            log!("Sent move");
+                    if
+                        self.mouse_tracker.get_time_held(0).unwrap() < 1000.0 &&
+                        diff.abs().max() < 0.1
+                    {
+                        // Click
+                        log!("Clicked on {:?}", self.hover_tile);
+                        if self.hover_tile.is_some() {
+                            let pos = self.hover_tile.unwrap();
+                            if self.grid.is_valid_move(&pos) {
+                                send(ws, "move", self.hover_tile.unwrap().to_json().as_str());
+                                log!("Sent move");
+                            }
                         }
                     }
                 }

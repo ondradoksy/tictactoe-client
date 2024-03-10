@@ -52,7 +52,11 @@ pub(crate) fn start_websocket(
                 let event = event_result.unwrap();
                 match event.event.as_str() {
                     "players" => {
-                        update_player_list(&mut players_clone.borrow_mut(), event.content.as_str());
+                        update_player_list(
+                            &mut players_clone.borrow_mut(),
+                            event.content.as_str(),
+                            &current_game_clone.borrow()
+                        );
                     }
                     "games" => {
                         update_game_list(event.content.as_str(), &ws_clone, &mut game_list);
@@ -61,7 +65,8 @@ pub(crate) fn start_websocket(
                         joined_game(
                             event.content.as_str(),
                             &mut current_game_clone.borrow_mut(),
-                            &game_list
+                            &game_list,
+                            &players_clone.borrow()
                         );
                     }
                     "new_move" => { new_move(event.content.as_str(), &mut game_clone.borrow_mut()) }
@@ -122,13 +127,17 @@ fn update_player_image(players: &mut Vec<Player>, content: &str) {
     set_image(players, result.unwrap());
 }
 
-fn update_player_list(players: &mut Vec<Player>, content: &str) {
+fn update_player_list(players: &mut Vec<Player>, content: &str, current_game: &Option<GameInfo>) {
     let player_list: Vec<Player> = serde_wasm_bindgen
         ::from_value(JSON::parse(content).unwrap())
         .unwrap();
 
     merge_players(players, &player_list);
 
+    display_players(&player_list, current_game);
+}
+
+fn display_players(player_list: &Vec<Player>, current_game: &Option<GameInfo>) {
     let list: HtmlElement = players_div();
     list.set_inner_html("");
 
@@ -140,6 +149,13 @@ fn update_player_list(players: &mut Vec<Player>, content: &str) {
         let div = document().create_element("div").expect("Unable to create div");
         div.set_text_content(Some(format!("{}#{}", p.name, p.id).as_str()));
         list.append_child(&div).expect("Unable to add player to list");
+        if
+            current_game.is_none() ||
+            p.joined_game_id.is_none() ||
+            p.joined_game_id.unwrap() != current_game.as_ref().unwrap().id
+        {
+            continue;
+        }
         list_game.append_child(&div).expect("Unable to add player to list");
     }
 }
@@ -183,7 +199,8 @@ fn update_game_list(content: &str, ws: &WebSocket, game_list: &Rc<RefCell<Vec<Ga
 fn joined_game(
     content: &str,
     current_game: &mut Option<GameInfo>,
-    game_list: &Rc<RefCell<Vec<GameInfo>>>
+    game_list: &Rc<RefCell<Vec<GameInfo>>>,
+    player_list: &Vec<Player>
 ) {
     let data_result = GameJoinData::from_json(&content);
     if data_result.is_err() {
@@ -223,6 +240,8 @@ fn joined_game(
     get_element_by_id("game-win-length").set_text_content(
         Some(current_game.as_ref().unwrap().length_to_win.to_string().as_str())
     );
+
+    display_players(player_list, current_game);
 }
 
 fn start_game(
