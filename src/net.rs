@@ -182,7 +182,7 @@ fn update_game_list(content: &str, ws: &WebSocket, game_list: &Rc<RefCell<Vec<Ga
             g.hotjoin,
             g.player_limit,
             g.running,
-            g.length_to_win
+            g.win_length
         );
         let div = document().create_element("div").expect("Unable to create div");
         div.set_text_content(Some(format!("{} - {} players", g.id, g.player_list.len()).as_str()));
@@ -238,7 +238,7 @@ fn joined_game(
         Some(current_game.as_ref().unwrap().hotjoin.to_string().as_str())
     );
     get_element_by_id("game-win-length").set_text_content(
-        Some(current_game.as_ref().unwrap().length_to_win.to_string().as_str())
+        Some(current_game.as_ref().unwrap().win_length.to_string().as_str())
     );
 
     display_players(player_list, current_game);
