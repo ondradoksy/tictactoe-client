@@ -135,7 +135,6 @@ impl Game {
 
     fn init_texture_indices(&mut self) {
         self.texture_indices = Vec::with_capacity((self.grid.size.x * self.grid.size.y) as usize);
-        log!("{:?}", self.grid);
 
         // Y
         for i in 0..self.grid.size.y {
@@ -149,7 +148,6 @@ impl Game {
                 }
             }
         }
-        log!("{:?}", self.texture_indices);
     }
 
     pub fn create_shader(
@@ -534,24 +532,12 @@ impl Game {
 
                 let tile_colors = self.get_tile_colors(j, i, &model_matrix);
 
-                let mut iter = tile_colors.chunks_exact(4);
-
-                let lt_color: &[f32] = iter.next().unwrap();
-                let lb_color: &[f32] = iter.next().unwrap();
-                let rt_color: &[f32] = iter.next().unwrap();
-                let rb_color: &[f32] = iter.next().unwrap();
-
-                let mut clrs: Vec<f32> = Vec::new();
-
-                clrs.extend_from_slice(&rt_color);
-                clrs.extend_from_slice(&lt_color);
-                clrs.extend_from_slice(&lb_color);
-                clrs.extend_from_slice(&rb_color);
-
                 let texture_id = self.grid.get_pos(&Size::new(j, i));
 
                 game_objects.push(
-                    GameObject::new_tile(model_matrix, clrs, if texture_id.is_some() {
+                    GameObject::new_tile(model_matrix, tile_colors.to_vec(), if
+                        texture_id.is_some()
+                    {
                         texture_id.unwrap().try_into().unwrap()
                     } else {
                         -1
@@ -649,35 +635,37 @@ impl Game {
         let mut rt_color: [f32; 4] = [0.0, 0.0, 1.0, 0.1];
         let mut rb_color: [f32; 4] = [0.0, 0.0, 0.0, 0.1];
 
-        let screen_pos = self.get_tile_pos_on_screen(&model_matrix);
+        if self.hover_tile == None {
+            let screen_pos = self.get_tile_pos_on_screen(&model_matrix);
+            if
+                point_in_polygon(
+                    Game::convert_x_to_screen(self.mouse_tracker.get_current_pos().x),
+                    Game::convert_y_to_screen(self.mouse_tracker.get_current_pos().y),
+                    [
+                        (screen_pos[2], screen_pos[3]),
+                        (screen_pos[4], screen_pos[5]),
+                        (screen_pos[6], screen_pos[7]),
+                        (screen_pos[0], screen_pos[1]),
+                    ]
+                )
+            {
+                self.hover_tile = Some(Size::new(x, y));
+            }
+        }
 
-        if
-            self.hover_tile == None &&
-            point_in_polygon(
-                Game::convert_x_to_screen(self.mouse_tracker.get_current_pos().x),
-                Game::convert_y_to_screen(self.mouse_tracker.get_current_pos().y),
-                [
-                    (screen_pos[2], screen_pos[3]),
-                    (screen_pos[4], screen_pos[5]),
-                    (screen_pos[6], screen_pos[7]),
-                    (screen_pos[0], screen_pos[1]),
-                ]
-            )
-        {
+        if self.hover_tile == Some(Size::new(x, y)) {
             lt_color = [1.0, 1.0, 1.0, 0.8];
             lb_color = [1.0, 1.0, 1.0, 0.8];
             rt_color = [1.0, 1.0, 1.0, 0.8];
             rb_color = [1.0, 1.0, 1.0, 0.8];
-
-            self.hover_tile = Some(Size::new(x, y));
         }
 
         let mut result: [f32; 16] = [0.0; 16];
 
         for i in 0..4 {
-            result[i + 0] = lt_color[i];
-            result[i + 4] = lb_color[i];
-            result[i + 8] = rt_color[i];
+            result[i + 0] = rt_color[i];
+            result[i + 4] = lt_color[i];
+            result[i + 8] = lb_color[i];
             result[i + 12] = rb_color[i];
         }
 
