@@ -11,13 +11,7 @@ Install [rustup](https://doc.rust-lang.org/cargo/getting-started/installation.ht
 Build using:
 
 ```
-$ cargo build
-```
-
-Run tests using:
-
-```
-$ cargo test
+$ wasm-pack build
 ```
 
 ## Using the watch script
@@ -34,7 +28,7 @@ $ ./watch.sh
 
 Install [node](https://github.com/nodejs/node) and [npm](https://github.com/npm/cli)
 
-Install dependencies
+Install dependencies (run inside `www` directory)
 
 ```
 $ npm install
