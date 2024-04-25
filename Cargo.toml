@@ -1,6 +1,6 @@
 [package]
 name = "tictactoe-client"
-version = "0.0.1"
+version = "1.0.0"
 authors = ["ondradoksy <ondradoksy@ondradoksy.com>"]
 edition = "2018"
 
